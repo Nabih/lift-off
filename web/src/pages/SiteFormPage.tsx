@@ -350,7 +350,28 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                 {form.authType === 'ssh'
                   ? 'A dedicated keypair is generated per site. Add its public key to GitHub as a deploy key.'
                   : form.authType === 'token'
-                    ? 'A fine-grained or classic token with read access to the repository. Stored encrypted.'
+                    ? (
+                        <>
+                          A read-only token with access to the repository. Stored
+                          encrypted.{' '}
+                          <a
+                            href="https://github.com/settings/tokens/new?scopes=repo&description=Lift-Off%20deploy"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            Generate a classic token →
+                          </a>{' '}
+                          (or{' '}
+                          <a
+                            href="https://github.com/settings/personal-access-tokens/new"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            a fine-grained token
+                          </a>
+                          .)
+                        </>
+                      )
                     : 'Only works for public repositories.'}
               </small>
               <small className="hint">
