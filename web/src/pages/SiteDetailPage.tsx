@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
@@ -28,7 +28,7 @@ export default function SiteDetailPage() {
   const [loading, setLoading] = useState(true);
   const [deployTarget, setDeployTarget] = useState<Site | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!id) return;
     const loaded = await api.getSite(id);
     setSite(loaded);
@@ -41,7 +41,7 @@ export default function SiteDetailPage() {
     ]);
     setDeployments(deploymentResult.deployments);
     setReleases(releaseResult.releases);
-  };
+  }, [id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -221,6 +221,118 @@ export default function SiteDetailPage() {
               </div>
             </>
           ) : null}
+        </section>
+
+        <section className="card">
+          <div className="row">
+            <h2>Connectivity</h2>
+            <span className="spacer" />
+            <button
+              className="btn small"
+              type="button"
+              disabled={busy !== null}
+              onClick={() =>
+                void run('test', async () => {
+                  setTest(await api.testSite(site.id));
+                })
+              }
+            >
+              {busy === 'test' ? 'Testing…' : 'Test connection'}
+            </button>
+          </div>
+          {test ? (
+            <div className={`alert ${test.ok ? 'success' : 'error'}`}>{test.message}</div>
+          ) : (
+            <p className="muted small">
+              Verifies the deploy key can read the repository and that the branch
+              exists.
+            </p>
+          )}
+        </section>
+
+        {site.deployStrategy === 'releases' && releases.length > 0 && (
+          <section className="card">
+            <h2>Releases</h2>
+            <ul className="release-list">
+              {releases.map((release) => (
+                <li
+                  key={release.name}
+                  className={release.isCurrent ? 'current' : ''}
+                >
+                  <span className="mono">{release.name}</span>
+                  {release.isCurrent && <span className="badge success">live</span>}
+                  {release.redeploy && (
+                    <span className="redeploy-ref" title="A forced re-deploy of what was already live">
+                      <span aria-hidden="true">↻</span>
+                      <span>re-deploy</span>
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section className="card">
+          <div className="row">
+            <h2>Recent deployments</h2>
+            <span className="spacer" />
+            <Link className="btn ghost small" to="/deployments">
+              View all
+            </Link>
+          </div>
+
+          {deployments.length === 0 ? (
+            <p className="muted small">No deployments yet.</p>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Commit</th>
+                  <th>Started</th>
+                  <th>Duration</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {deployments.map((deployment) => (
+                  <tr key={deployment.id}>
+                    <td>
+                      <StatusBadge status={deployment.status} />
+                      {deployment.kind === 'rollback' && (
+                        <span className="badge muted">rollback</span>
+                      )}
+                      {deployment.redeploy && (
+                        <span
+                          className="redeploy-ref"
+                          title="A forced re-deploy of what was already live"
+                        >
+                          <span aria-hidden="true">↻</span>
+                          <span>re-deploy</span>
+                        </span>
+                      )}
+                    </td>
+                    <td className="small">
+                      <CommitRef deployment={deployment} />
+                    </td>
+                    <td className="small" title={formatDateTime(deployment.queuedAt)}>
+                      {formatRelative(deployment.queuedAt)}
+                    </td>
+                    <td className="small">{formatDuration(deployment.durationMs)}</td>
+                    <td>
+                      <Link
+                        className="link"
+                        to={`/deployments/${deployment.id}`}
+                      >
+                        Logs
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </section>
 
         {isAdmin && (
