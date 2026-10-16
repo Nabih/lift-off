@@ -532,7 +532,14 @@ sitesRouter.get('/:id/releases', async (req, res, next) => {
       res.json({ releases: [] });
       return;
     }
-    res.json({ releases: await listReleases(site.target_dir) });
+    const releases = await listReleases(site.target_dir);
+    const flags = store.releaseRedeployFlags(site.id);
+    res.json({
+      releases: releases.map((release) => ({
+        ...release,
+        redeploy: flags.get(release.name) ?? false,
+      })),
+    });
   } catch (error) {
     next(error);
   }

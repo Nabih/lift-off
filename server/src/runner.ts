@@ -48,6 +48,7 @@ function enqueue(
     commit_sha: null,
     commit_message: null,
     redeploy: options.redeploy ? 1 : 0,
+    release_name: null,
     triggered_by: triggeredBy,
     error: null,
     queued_at: new Date().toISOString(),
@@ -220,6 +221,12 @@ async function performDeploy(
   log.info(`Using build output at ${site.dist_dir}`);
 
   const result = await deployArtifact(site, outputDir, sha, log);
+
+  // Remember the release folder so the Releases card can label it (e.g. as a
+  // re-deployment). Direct strategy produces no release folder.
+  if (result.releaseName) {
+    updateDeployment(deploymentId, { release_name: result.releaseName });
+  }
 
   log.success(
     result.strategy === 'releases'

@@ -119,6 +119,8 @@ export interface Release {
   name: string;
   path: string;
   isCurrent: boolean;
+  /** True when the deploy that produced this release was a forced re-deployment. */
+  redeploy?: boolean;
 }
 
 export interface PackageJsonScript {

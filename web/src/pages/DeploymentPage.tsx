@@ -71,9 +71,6 @@ export default function DeploymentPage() {
             {deployment.kind === 'rollback' && (
               <span className="badge muted">rollback</span>
             )}
-            {deployment.redeploy && (
-              <span className="badge queued">re-deployment</span>
-            )}
           </div>
           <p className="muted small">
             <Link className="link" to={`/sites/${deployment.siteId}`}>

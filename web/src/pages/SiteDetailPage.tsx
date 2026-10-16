@@ -320,6 +320,14 @@ export default function SiteDetailPage() {
             {releases.map((release) => (
               <li key={release.name} className={release.isCurrent ? 'current' : ''}>
                 <span className="mono">{release.name}</span>
+                {release.redeploy && (
+                  <span
+                    className="redeploy-ref"
+                    title="Re-deployment — this branch and commit were already live"
+                  >
+                    ↻ re-deploy
+                  </span>
+                )}
                 {release.isCurrent && <span className="badge success">live</span>}
               </li>
             ))}
@@ -356,9 +364,6 @@ export default function SiteDetailPage() {
                     <StatusBadge status={deployment.status} />
                     {deployment.kind === 'rollback' && (
                       <span className="badge muted">rollback</span>
-                    )}
-                    {deployment.redeploy && (
-                      <span className="badge queued">re-deployment</span>
                     )}
                   </td>
                   <td className="small">

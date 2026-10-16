@@ -137,8 +137,8 @@ export function insertDeployment(row: DeploymentRow): void {
   db.prepare(
     `INSERT INTO deployments (
        id, site_id, kind, status, branch, commit_sha, commit_message, redeploy,
-       triggered_by, error, queued_at, started_at, finished_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       release_name, triggered_by, error, queued_at, started_at, finished_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     row.id,
     row.site_id,
@@ -148,6 +148,7 @@ export function insertDeployment(row: DeploymentRow): void {
     row.commit_sha,
     row.commit_message,
     row.redeploy,
+    row.release_name,
     row.triggered_by,
     row.error,
     row.queued_at,
@@ -243,6 +244,22 @@ export function findDeploymentByShaPrefix(
     )
     .get(siteId, `${prefix}%`) as unknown as DeploymentRow | undefined;
   return row ?? null;
+}
+
+/**
+ * Maps release folder name → whether the deploy that produced it was a forced
+ * re-deployment, so the Releases card can label them. A release produced by a
+ * rollback is not counted (rollbacks do not set `release_name`).
+ */
+export function releaseRedeployFlags(siteId: string): Map<string, boolean> {
+  const rows = db
+    .prepare(
+      `SELECT release_name, MAX(redeploy) AS redeploy FROM deployments
+       WHERE site_id = ? AND release_name IS NOT NULL
+       GROUP BY release_name`,
+    )
+    .all(siteId) as unknown as Array<{ release_name: string; redeploy: number }>;
+  return new Map(rows.map((row) => [row.release_name, Boolean(row.redeploy)]));
 }
 
 /* -------------------------------------------------------------------------- */

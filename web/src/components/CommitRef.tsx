@@ -12,6 +12,10 @@ interface Props {
  * Commit sha and branch for a deployment, linked to GitHub when the remote is a
  * GitHub URL. The branch links to the tree *at that commit*, so it shows what
  * was actually deployed rather than the branch's current tip.
+ *
+ * A forced re-deployment gets a pill next to the branch: it qualifies that exact
+ * branch + commit, so it belongs in this cluster rather than in the status
+ * column, where a wide label stretched the whole column.
  */
 export default function CommitRef({ deployment, messageLength = 48 }: Props) {
   const base = githubBase(deployment.repoUrl);
@@ -47,6 +51,15 @@ export default function CommitRef({ deployment, messageLength = 48 }: Props) {
         ) : (
           <span className="branch-ref mono">{deployment.branch}</span>
         ))}
+
+      {deployment.redeploy && (
+        <span
+          className="redeploy-ref"
+          title="Re-deployment — this branch and commit were already live"
+        >
+          ↻ re-deploy
+        </span>
+      )}
 
       {deployment.commitMessage && (
         <span className="muted">

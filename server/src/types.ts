@@ -104,6 +104,8 @@ export interface DeploymentRow {
   commit_message: string | null;
   /** 1 when forced despite the branch + commit already being live. */
   redeploy: number;
+  /** Release folder created by the deploy (releases strategy only). */
+  release_name: string | null;
   triggered_by: string | null;
   error: string | null;
   queued_at: string;

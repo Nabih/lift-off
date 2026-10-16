@@ -260,7 +260,9 @@ the API too, not just the UI.
 Each deployment records the **branch** and the **head commit** it built. In the
 deployment listings the short commit links to that commit on GitHub, and the branch
 links to the tree **at that commit** — what was deployed, not the branch's current
-tip. A forced deploy of what was already live is labelled **re-deployment**.
+tip. A forced deploy of what was already live gets a small **↻ re-deploy** pill next
+to the branch, both in the deployment lists and on the **Releases** card, so the
+label sits with the branch and commit it actually describes.
 
 Rollbacks record the commit they reverted to, so "what is live" stays accurate after
 a roll back instead of pointing at the release that was superseded.

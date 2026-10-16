@@ -147,6 +147,8 @@ export interface DeployResult {
   strategy: DeployStrategy;
   targetDir: string;
   releaseDir?: string;
+  /** Name of the release folder this deploy created (releases strategy only). */
+  releaseName?: string;
   previousReleaseDir?: string | null;
 }
 
@@ -193,7 +195,13 @@ async function deployReleases(
 
   await pruneReleases(releasesDir, site.keep_releases, releaseDir, log);
 
-  return { strategy: 'releases', targetDir, releaseDir, previousReleaseDir };
+  return {
+    strategy: 'releases',
+    targetDir,
+    releaseDir,
+    releaseName,
+    previousReleaseDir,
+  };
 }
 
 /** Ships the built output to its destination using the site's strategy. */

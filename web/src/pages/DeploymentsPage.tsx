@@ -78,9 +78,6 @@ export default function DeploymentsPage() {
                     {deployment.kind === 'rollback' && (
                       <span className="badge muted">rollback</span>
                     )}
-                    {deployment.redeploy && (
-                      <span className="badge queued">re-deployment</span>
-                    )}
                   </td>
                   <td className="small">
                     <CommitRef deployment={deployment} messageLength={40} />

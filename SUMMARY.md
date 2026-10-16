@@ -17,7 +17,8 @@ Rounds so far: (1) core deploy pipeline, (2) users/roles/owner, (3) PAT auth +
 email password reset, (4) form-time repository validation + script discovery,
 (5) renamed to **Lift-Off** and published publicly, (6) site-side access
 assignment + filtered assignment lists, (7) branch dropdown from the validated
-repository, (8) re-deploy detection, forced deploys, and GitHub links.
+repository, (8) re-deploy detection, forced deploys, and GitHub links,
+(9) moved the re-deployment label next to the branch and onto the Releases card.
 
 ---
 
@@ -293,6 +294,36 @@ GitHub links for the commit and branch.
   in, and the check runs while it is open. Re-deploys additionally disable the
   button until Force is ticked.
 
+### Round 9 — where the re-deployment label lives
+
+The round-8 label was a wide `re-deployment` badge dropped into the status column
+(on the site page) and the site column (on the deployments list), which stretched
+whichever column it landed in and read as unrelated to the thing it described.
+
+| Question | Decision |
+| --- | --- |
+| Where does the label go? | A compact `↻ re-deploy` pill **next to the branch**, in the same cluster as the commit and branch |
+| Why there? | It qualifies that exact branch + commit, so grouping it with them is semantically right and it no longer widens the status/site columns |
+| Shorter text? | Yes — `↻ re-deploy` plus a `title` tooltip, instead of the full `re-deployment` |
+| On the Releases card too? | Yes: record `deployments.release_name` so a release can be tied back to the deploy that produced it |
+
+**Design calls I made, and why:**
+
+- **Is it confusing next to the branch?** No, if it is visually distinct and
+  explained: same pill shape as the branch so it looks intentional, but in the
+  warning colour, prefixed with `↻`, and with a tooltip that spells out
+  "this branch and commit were already live". A bare word next to `main` would be
+  ambiguous; a distinct pill reads as a qualifier.
+- **The releases need a real link, not a sha guess.** Several releases share a sha
+  (a forced re-deploy of a live commit makes a second release with the same short
+  sha), so matching by sha cannot tell which release was the re-deploy. Record the
+  exact `release_name` the deploy produced and join on that instead.
+- **`MAX(redeploy)` per release name.** Collapsing by `release_name` keeps the
+  mapping unambiguous even if a release name is ever reused.
+- **Rollbacks do not set `release_name`**, so a rollback never makes a release look
+  like a re-deployment — it re-points at an existing release rather than producing
+  one.
+
 ---
 
 ## 3. How it works
@@ -482,7 +513,7 @@ change is presentational, so it was verified by typecheck + production build
 rather than a new headless suite; the submit path and `SiteInput.branch` are
 untouched.
 
-**Re-deploy detection + forced deploys** (34 checks, all passing, against a
+**Re-deploy detection + forced deploys** (37 checks, all passing, against a
 dumb-HTTP git fixture that can be pushed to mid-test):
 - the first deploy recorded `branch: master` and the exact head commit, and was
   not a re-deployment
@@ -497,6 +528,8 @@ dumb-HTTP git fixture that can be pushed to mid-test):
   kept the branch, and `deploy-check` then reported that older commit as live
 - changing the site branch made the next check `wouldRedeploy: false` even with
   the commit unchanged
+- `GET /:id/releases` labelled exactly the forced re-deploy release (of two with
+  the same sha) and left the other unlabelled
 
 **Migrations** (11 checks, all passing):
 - pre-users DB with only a legacy `admin_password_hash`, booted with no
