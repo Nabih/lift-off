@@ -347,32 +347,41 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                 )}
               </div>
               <small className="hint">
-                {form.authType === 'ssh'
-                  ? 'A dedicated keypair is generated per site. Add its public key to GitHub as a deploy key.'
-                  : form.authType === 'token'
-                    ? (
-                        <>
-                          A read-only token with access to the repository. Stored
-                          encrypted.{' '}
-                          <a
-                            href="https://github.com/settings/tokens/new?scopes=repo&description=Lift-Off%20deploy"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            Generate a classic token →
-                          </a>{' '}
-                          (or{' '}
-                          <a
-                            href="https://github.com/settings/personal-access-tokens/new"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            a fine-grained token
-                          </a>
-                          .)
-                        </>
-                      )
-                    : 'Only works for public repositories.'}
+                {form.authType === 'ssh' ? (
+                  <>
+                    A dedicated keypair is generated when you save the site. Copy the
+                    public key shown on the site page and add it on GitHub as a
+                    {' '}read-only deploy key (Settings → Deploy keys).{' '}
+                    <a
+                      href="https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys#deploy-keys"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      How to add a deploy key →
+                    </a>
+                  </>
+                ) : form.authType === 'token' ? (
+                  <>
+                    A read-only token with access to the repository. Stored
+                    encrypted.{' '}
+                    <a
+                      href="https://github.com/settings/tokens/new?scopes=repo&description=Lift-Off%20deploy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Generate a classic token →
+                    </a>{' '}
+                    (or{' '}
+                    <a
+                      href="https://github.com/settings/personal-access-tokens/new"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      a fine-grained token
+                    </a>
+                    .)
+                  </>
+                ) : 'Only works for public repositories.'}
               </small>
               <small className="hint">
                 {!canValidate
