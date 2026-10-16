@@ -9,6 +9,7 @@ import {
 } from './deploy.js';
 import { syncRepo } from './git.js';
 import { createBuildLogger, type BuildLogger } from './log.js';
+import { getMailConfig, sendDeploymentFinishedEmail } from './mail.js';
 import { logBus } from './logbus.js';
 import { runStreaming } from './process.js';
 import {
@@ -99,6 +100,60 @@ export function enqueueRollback(
   });
 }
 
+/**
+ * Emails the configured recipient once a deployment has finished, whatever the
+ * outcome. This is deliberately wired into the queue's `finally` rather than the
+ * success/failure branches: every deployment passes through exactly once, so a
+ * notification cannot be sent twice or skipped on an early exit.
+ *
+ * Fire-and-forget: a slow or broken SMTP server must never delay the next build.
+ */
+function notifyDeploymentFinished(deploymentId: string): void {
+  try {
+    const config = getMailConfig();
+    if (!config) return;
+
+    const deployment = getDeployment(deploymentId);
+    if (!deployment) return;
+    const status = deployment.status;
+    if (status !== 'success' && status !== 'failed' && status !== 'cancelled') {
+      return;
+    }
+
+    const started = deployment.started_at
+      ? Date.parse(deployment.started_at)
+      : Number.NaN;
+    const finished = deployment.finished_at
+      ? Date.parse(deployment.finished_at)
+      : Number.NaN;
+    const durationMs =
+      Number.isFinite(started) && Number.isFinite(finished)
+        ? finished - started
+        : null;
+
+    void sendDeploymentFinishedEmail(config, {
+      siteName: getSite(deployment.site_id)?.name ?? deployment.site_id,
+      status,
+      branch: deployment.branch,
+      commitSha: deployment.commit_sha,
+      commitMessage: deployment.commit_message,
+      triggeredBy: deployment.triggered_by,
+      error: deployment.error,
+      durationMs,
+    }).catch((error: unknown) => {
+      console.error(
+        '[liftoff] Could not send the deployment notification:',
+        error instanceof Error ? error.message : error,
+      );
+    });
+  } catch (error) {
+    console.error(
+      '[liftoff] Could not send the deployment notification:',
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 function pump(): void {
   while (active < MAX_CONCURRENT_BUILDS && pending.length > 0) {
     const deploymentId = pending.shift();
@@ -110,6 +165,7 @@ function pump(): void {
       })
       .finally(() => {
         active -= 1;
+        notifyDeploymentFinished(deploymentId);
         pump();
       });
   }

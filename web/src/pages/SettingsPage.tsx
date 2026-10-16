@@ -249,6 +249,7 @@ function ChangePasswordCard({ onSaved }: { onSaved: () => Promise<void> }) {
 /* -------------------------------------------------------------------------- */
 
 const EMPTY_MAIL: MailSettings = {
+  notifyEmail: 'nabih@email.com',
   publicUrl: '',
   host: '',
   port: 587,
@@ -305,6 +306,7 @@ function MailSettingsCard() {
         secure: form.secure,
         user: form.user,
         from: form.from,
+        notifyEmail: form.notifyEmail,
         ...(password ? { pass: password } : {}),
       });
       setForm(saved);
@@ -417,6 +419,21 @@ function MailSettingsCard() {
             placeholder="Lift-Off <noreply@example.com>"
             onChange={(event) => set('from', event.target.value)}
           />
+        </label>
+
+        <label className="field">
+          <span>Notify on deploy finish</span>
+          <input
+            className="input"
+            type="email"
+            value={form.notifyEmail}
+            placeholder="nabih@email.com"
+            onChange={(event) => set('notifyEmail', event.target.value)}
+          />
+          <small className="hint">
+            Receives one email whenever a deployment finishes, whether it
+            succeeded or failed. Separate multiple addresses with commas.
+          </small>
         </label>
 
         <label className="checkbox">
