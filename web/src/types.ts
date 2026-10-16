@@ -204,9 +204,23 @@ export interface DeploymentList {
   users: string[];
 }
 
+/** The card footer summary of a site's most recent deployment. */
+export interface LatestDeployment {
+  id: string;
+  status: DeploymentStatus;
+  kind: DeploymentKind;
+  queuedAt: string;
+}
+
+/** A site plus its latest deployment, as returned by the sites list. */
+export interface ListedSite extends Site {
+  /** Null when the site has never been deployed. */
+  latest: LatestDeployment | null;
+}
+
 /** Site listing envelope; `pages` is 1 and everything is returned when unpaged. */
 export interface SiteList {
-  sites: Site[];
+  sites: ListedSite[];
   total: number;
   page: number;
   perPage: number;

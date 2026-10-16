@@ -6,22 +6,9 @@ import ErrorAlert from '../components/ErrorAlert';
 import StatusBadge from '../components/StatusBadge';
 import { formatDateTime, formatDuration, formatRelative } from '../format';
 import type { Deployment } from '../types';
+import { useDebounced } from '../useDebounced';
 
 const PER_PAGE = 10;
-
-/**
- * Returns the value after it has stopped changing for `delay` ms. Typing in the
- * search box updates the URL only once the user pauses, so we fire one request
- * instead of one per keystroke.
- */
-function useDebounced<T>(value: T, delay: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setSettled(value), delay);
-    return () => window.clearTimeout(timer);
-  }, [value, delay]);
-  return settled;
-}
 
 export default function DeploymentsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -38,7 +25,7 @@ export default function DeploymentsPage() {
   // Keep a local copy so typing stays responsive; the URL (and the request)
   // only follow once typing pauses.
   const [searchInput, setSearchInput] = useState(search);
-  const debouncedSearch = useDebounced(searchInput, 200);
+  const debouncedSearch = useDebounced(searchInput, 200)[0];
   const user = searchParams.get('user') ?? '';
   const type = (searchParams.get('type') ?? '') as
     | ''

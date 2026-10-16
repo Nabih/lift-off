@@ -294,6 +294,49 @@ export function deploymentTriggerUsers(siteId?: string): string[] {
   return rows.map((row) => row.triggered_by).filter(Boolean);
 }
 
+/**
+ * The most recent deployment for each of the given sites, in one query.
+ *
+ * Uses ROW_NUMBER() so each site yields exactly one row even when several
+ * deployments share a timestamp, instead of fetching a page of deployments and
+ * de-duplicating in JS (which silently reported "never deployed" once a site
+ * fell outside that page).
+ */
+export function latestDeploymentsForSites(
+  siteIds?: string[],
+): Map<string, DeploymentRow> {
+  let rows: DeploymentRow[];
+  if (siteIds && siteIds.length === 0) return new Map();
+  if (siteIds) {
+    const placeholders = siteIds.map(() => '?').join(',');
+    rows = db
+      .prepare(
+        `SELECT * FROM (
+           SELECT d.*, ROW_NUMBER() OVER (
+             PARTITION BY d.site_id
+             ORDER BY COALESCE(d.finished_at, d.queued_at) DESC, d.queued_at DESC
+           ) AS rn
+           FROM deployments d
+           WHERE d.site_id IN (${placeholders})
+         ) WHERE rn = 1`,
+      )
+      .all(...siteIds) as unknown as DeploymentRow[];
+  } else {
+    rows = db
+      .prepare(
+        `SELECT * FROM (
+           SELECT d.*, ROW_NUMBER() OVER (
+             PARTITION BY d.site_id
+             ORDER BY COALESCE(d.finished_at, d.queued_at) DESC, d.queued_at DESC
+           ) AS rn
+           FROM deployments d
+         ) WHERE rn = 1`,
+      )
+      .all() as unknown as DeploymentRow[];
+  }
+  return new Map(rows.map((row) => [row.site_id, row]));
+}
+
 export function insertDeployment(row: DeploymentRow): void {
   db.prepare(
     `INSERT INTO deployments (

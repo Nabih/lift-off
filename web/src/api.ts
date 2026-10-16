@@ -125,11 +125,25 @@ export const api = {
     request<{ ok: boolean }>(`/api/users/${id}`, { method: 'DELETE' }),
 
   // ---- sites ------------------------------------------------------------
-  listSites: (options?: { deleted?: boolean; page?: number; limit?: number }) => {
+  listSites: (options?: {
+    deleted?: boolean;
+    page?: number;
+    limit?: number;
+    search?: string;
+    filter?: 'all' | 'never-deployed' | 'draft' | 'disabled';
+    orderBy?: 'name' | 'last-deploy' | 'created';
+    order?: 'asc' | 'desc';
+  }) => {
     const params = new URLSearchParams();
     if (options?.deleted) params.set('deleted', '1');
     if (options?.page) params.set('page', String(options.page));
     if (options?.limit) params.set('limit', String(options.limit));
+    if (options?.search) params.set('search', options.search);
+    if (options?.filter && options.filter !== 'all') {
+      params.set('filter', options.filter);
+    }
+    if (options?.orderBy) params.set('orderBy', options.orderBy);
+    if (options?.order) params.set('order', options.order);
     const query = params.toString();
     return request<SiteList>(`/api/sites${query ? `?${query}` : ''}`);
   },

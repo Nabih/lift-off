@@ -467,26 +467,30 @@ server/src/
   crypto.ts       AES-256-GCM + scrypt
   db.ts           schema (sites, deployments, deployment_logs, settings, users,
                   user_sites, password_resets) + ensureColumn migrations
-  store.ts        All SQL queries (users, sites, user_sites assignments)
+  store.ts        All SQL queries (users, sites, user_sites assignments,
+                  latestDeploymentsForSites, deployment list filters)
   git.ts          clone/fetch/reset, SSH + token auth env, connection test,
                   form-time validation + shallow package.json read
   ssh.ts          ssh-keygen keypair generation
-  runner.ts       queue, deploy + rollback pipeline
+  runner.ts       queue, deploy + rollback pipeline, deploy-finish notification
   deploy.ts       releases vs direct, atomic symlink, prune, rollback, target validation
   log.ts          log persistence + live publish
   logbus.ts       EventEmitter fan-out
-  mail.ts         SMTP transport from UI settings, reset + test emails
+  mail.ts         SMTP transport from UI settings, reset/test/deploy-finish emails,
+                  recipient resolution
   password-reset.ts  single-use hashed tokens (60 min)
   ratelimit.ts    in-memory sliding-window limiter
   process.ts      streaming command execution, line splitting (capture supports timeouts)
   express-augment.d.ts   adds req.user
   routes/         auth.ts, users.ts, sites.ts, deployments.ts (incl. SSE), settings.ts
 web/src/
-  App.tsx, api.ts, auth.tsx, format.ts
-  components/     Layout, LogViewer, StatusBadge, CopyButton, EnvVarsEditor,
+  App.tsx, api.ts, auth.tsx, format.ts, types.ts
+  useDebounced.ts shared 200 ms debounce (+ an immediate setter for "clear")
+  components/     Layout, LogViewer, StatusBadge, CopyButton, EnvVarsEditor, DeployDialog,
+                  CommitRef (re-deploy/rollback pills), ErrorAlert (scrolls into view),
                   CheckboxList (filtered multi-select for access assignment)
-  pages/          Login, ForgotPassword, ResetPassword, Sites, SiteForm, SiteDetail,
-                  Deployments, Deployment, Users, Settings
+  pages/          Login, ForgotPassword, ResetPassword, Setup, Sites, ArchivedSites,
+                  SiteForm, SiteDetail, Deployments, Deployment, Users, Settings
 ```
 
 Data dir (gitignored): `liftoff.db`, `secret.key`, `keys/`, `workspaces/`.
@@ -507,6 +511,83 @@ Fresh installs used to seed an owner from a generated password printed to the lo
 
 `initAuth` now returns early without creating anything when no env is provided,
 so the wizard is the default path and no generated password can leak.
+
+---
+
+### Round 13 — site lifecycle: drafts, archive/restore
+
+Sites became soft-deletable and completable rather than all-or-nothing.
+
+| Question | Decision |
+| --- | --- |
+| Incomplete site | **Draft** toggle at the top-right of the site form; only the name is required. Drafts get an orange badge and their Deploy button is disabled |
+| Delete | Renamed to **Archive** everywhere in the UI. Sets `deleted_at` |
+| Visibility | Archived sites are hidden from listings by default. `?deleted=1` returns *only* archived sites and is admin-only |
+| Where they live | Their own page, linked from the Sites header, so a restored site isn't a surprise |
+| Restore | Confirm first, then re-check uniqueness |
+| Uniqueness | Enforced across **active** sites for both `name` (case-insensitive) and `target_dir`, on create, rename and restore |
+| Deployers | Never see archived sites at all, assigned or not |
+
+---
+
+### Round 14 — a paginated, filterable deployments list
+
+| Question | Decision |
+| --- | --- |
+| Filters | Search by site name, plus User, Type (Regular/Rollback/Redeployed) and Status |
+| Sort | Order by Site / User / Time, ascending or descending |
+| Paging | 10 per page, server-side, with a `Showing X–Y of Z` pager |
+| Search cost | Debounced 200 ms — typing "billing" fires **one** request, not eight |
+| Polling | Only while a row is `queued`/`running`; otherwise the page makes zero requests when idle |
+| State | Filters live in the URL, so a filtered view is shareable and survives Back |
+
+`ORDER BY` columns are whitelisted server-side; the client never sends SQL.
+
+---
+
+### Round 15 — notification when a deployment finishes
+
+| Question | Decision |
+| --- | --- |
+| Trigger | `pump().finally()` — one hook, fires exactly once per deployment, success or failure |
+| Blocking | Fire-and-forget. SMTP can never stall the build queue |
+| Recipients | The deployment's own email (if typed) ∪ the account email of every enabled account, deduped and resolved **at send time** |
+| Default address | None. No hardcoded fallback — the UI warns when nothing would be sent |
+| Flaky SMTP | 3 attempts with backoff on transient errors; the outcome is written to the deployment log |
+| Toggle | "Notify on deploy finish" in Settings, on by default when a recipient exists |
+| Naming | "Recovery email" became **Account email**, since it serves both purposes |
+
+---
+
+### Round 16 — the sites list scales
+
+At 100 sites the grid was ~8,300 px tall — eight screens of scrolling with no way
+to find anything. Both halves of the fix landed together, because the "never
+deployed" filter and last-deploy sort need the same data.
+
+| Question | Decision |
+| --- | --- |
+| Page size | 6 cards — exactly two rows of the three-column grid, so nothing is orphaned on a wide screen |
+| Paging | Server-side. `GET /api/sites` returns `{ sites, total, page, perPage, pages }` |
+| Back-compat | **Omitting `?limit` still returns everything in one page.** The user-assignment checkboxes and the archived page need the complete list, and silently truncating those would be a nasty bug |
+| Search | By name *or* repo URL, debounced 200 ms |
+| Filters | All / Never deployed / Drafts / Disabled |
+| Sort | Name / Last deployment / Date added, asc or desc. Never-deployed sites always sink to the bottom, in both directions |
+| Card status | Served as `latest` on each site — no second request |
+
+`latestDeploymentsForSites()` resolves the newest deployment per site with a
+single `ROW_NUMBER() OVER (PARTITION BY site_id)` query. The card footer used to
+be built from one page of 200 deployments de-duplicated in JS, so any site whose
+most recent deployment fell outside that page silently reported **"Never
+deployed"** — wrong once you passed ~250 sites. Also exposed standalone as
+`GET /api/sites/latest-deployments` for callers that only need the footer.
+
+`useDebounced` moved to `web/src/useDebounced.ts` and now also returns a setter
+that applies immediately. Without it, "Clear filters" emptied the URL and the
+debounced value pushed `?search=` straight back a frame later.
+
+Both list pages now poll only while something on screen is actually in flight,
+and all filters live in the URL, so a page is shareable and Back works.
 
 ---
 
@@ -660,6 +741,31 @@ responses and sends `Expires: Fri, 01 Jan 1980 …` first — so the code read t
 status as `1` and `writeHead` threw. Fixed by checking for a leading `Status:`
 and defaulting to 200. The product was never affected.
 
+**Site list at scale (round 16)**, against a seeded 50-site / 1,387-deployment
+database, API and browser:
+
+- `?limit` absent → all 50 in one page (assignment + archived callers unaffected)
+- `?page=1&limit=6` → 6 cards, `pages: 9`; `?page=999` clamps to 9; a shared
+  `?page=999` link self-corrects to `?page=9`
+- search matched both name and repo, case-insensitively
+- filters exact: never-deployed 15 (every footer reads "Never deployed"), drafts 3,
+  disabled 4 (every card badged)
+- `orderBy=last-deploy` asc/desc, with all never-deployed sites at the end in both
+  directions; `orderBy=created` asc/desc
+- `latest` matched SQL ground truth for **all 50 sites, 0 mismatches** — including
+  four sites with 300+ deployments, whose latest no longer misreports
+- Deployer scoping held: 8 assigned sites, unpaged returns all 8, `latest-deployments`
+  returns only theirs, unassigned sites unreachable by search, archived stays admin-only
+- browser: typing "do" → "do…" fired **1** request; filters, sort and paging all
+  live in the URL and survive Back; "Clear filters" resets search + selects + page;
+  **0 requests while idle for 7 s**; the Deployments page still fires one request
+  per debounced search after the shared `useDebounced` move
+
+**A real bug this round caught:** "Clear filters" emptied the URL and the debounced
+value immediately pushed `?search=` back, so the button appeared to do nothing.
+The debounce had no way to be told the search was now empty. Fixed by having
+`useDebounced` return an immediate setter alongside the settled value.
+
 ---
 
 ## 8. Gotchas / things to know
@@ -688,6 +794,18 @@ and defaulting to 200. The product was never affected.
   *smart* remote (GitHub/GitLab/self-hosted git-http-backend all qualify). A repo
   served as static files over dumb HTTP will connect and list branches but return
   no scripts — degradation, not an error.
+- **`GET /api/sites` is the whole list unless you ask for a page.** No `?limit`
+  means everything in one page. Two callers depend on that (user assignment, the
+  archived page); paginating unconditionally would silently truncate both.
+- **Don't derive "latest deployment per site" from a page of deployments.** A site
+  whose newest deployment is outside that page looks like it has never deployed.
+  Use `latestDeploymentsForSites()`, which is one window-function query.
+- **Boot marks interrupted deployments failed** (stamps `finished_at = now`). That
+  is correct in production, but it means a *seeded* fixture database will disagree
+  with any ground truth computed before the server first starts.
+- **`user_sites.user_id` holds an opaque user id**, not the username. Seed fixtures
+  with `SELECT id FROM users WHERE username = ?`, or every assignment silently
+  matches nothing and a Deployer sees zero sites.
 - **The validate button needs a saved site for SSH.** The deploy key only exists
   after saving, so on the create form it stays disabled with an explanation.
 - The UI has no rate limiting on login and no 2FA; behind TLS + IP allowlist is

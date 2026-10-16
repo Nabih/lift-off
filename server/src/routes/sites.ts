@@ -146,15 +146,77 @@ function loadSiteForRequest(req: Request, res: Response): SiteRow | null {
 
 sitesRouter.get('/', (req, res) => {
   const user = requireUser(req);
+  const str = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() ? value.trim() : undefined;
+
   const includeDeleted =
     isAdmin(user) && String(req.query.deleted ?? '') === '1';
-  const rows = store
-    .listSitesForUser(user.id, isAdmin(user), includeDeleted)
-    .map((row) => siteForUser(row, user));
+  const visible = store.listSitesForUser(user.id, isAdmin(user), includeDeleted);
+
+  // One row per site for the card footer, so "never deployed" and
+  // last-deploy sorting stay correct no matter how many deployments exist.
+  const latest = store.latestDeploymentsForSites(visible.map((row) => row.id));
+
+  const search = str(req.query.search)?.toLowerCase();
+  const filter =
+    req.query.filter === 'never-deployed' ||
+    req.query.filter === 'draft' ||
+    req.query.filter === 'disabled'
+      ? req.query.filter
+      : 'all';
+  const order = req.query.order === 'desc' ? 'desc' : 'asc';
+  const orderBy =
+    req.query.orderBy === 'last-deploy' ||
+    req.query.orderBy === 'created'
+      ? req.query.orderBy
+      : 'name';
+
+  let items = visible.map((row) => {
+    const deployment = latest.get(row.id) ?? null;
+    return {
+      ...siteForUser(row, user),
+      latest: deployment
+        ? {
+            id: deployment.id,
+            status: deployment.status,
+            kind: deployment.kind,
+            queuedAt: deployment.queued_at,
+          }
+        : null,
+    };
+  });
+
+  if (search) {
+    items = items.filter(
+      (item) =>
+        item.name.toLowerCase().includes(search) ||
+        item.repoUrl.toLowerCase().includes(search),
+    );
+  }
+  if (filter === 'never-deployed') items = items.filter((item) => !item.latest);
+  if (filter === 'draft') items = items.filter((item) => item.draft);
+  if (filter === 'disabled') items = items.filter((item) => !item.enabled);
+
+  const direction = order === 'asc' ? 1 : -1;
+  items.sort((a, b) => {
+    if (orderBy === 'last-deploy') {
+      const at = a.latest?.queuedAt ?? '';
+      const bt = b.latest?.queuedAt ?? '';
+      // Never-deployed sites always sink to the bottom, whichever direction.
+      if (!at && !bt) return a.name.localeCompare(b.name);
+      if (!at) return 1;
+      if (!bt) return -1;
+      return at.localeCompare(bt) * direction;
+    }
+    if (orderBy === 'created') {
+      return a.createdAt.localeCompare(b.createdAt) * direction;
+    }
+    return a.name.localeCompare(b.name) * direction;
+  });
 
   // Omitting ?limit returns everything in one page, so callers that need the
   // whole list (user assignment, archived sites) keep working unchanged.
-  const total = rows.length;
+  const total = items.length;
   const requestedLimit = Number(req.query.limit);
   const perPage =
     Number.isFinite(requestedLimit) && requestedLimit > 0
@@ -165,12 +227,29 @@ sitesRouter.get('/', (req, res) => {
   const start = (page - 1) * perPage;
 
   res.json({
-    sites: rows.slice(start, start + perPage),
+    sites: items.slice(start, start + perPage),
     total,
     page,
     perPage,
     pages,
   });
+});
+
+/** Latest deployment per site, for callers that only need the card footer. */
+sitesRouter.get('/latest-deployments', (req, res) => {
+  const user = requireUser(req);
+  const visible = store.listSitesForUser(user.id, isAdmin(user), false);
+  const latest = store.latestDeploymentsForSites(visible.map((row) => row.id));
+  const result: Record<string, unknown> = {};
+  for (const [siteId, deployment] of latest) {
+    result[siteId] = {
+      id: deployment.id,
+      status: deployment.status,
+      kind: deployment.kind,
+      queuedAt: deployment.queued_at,
+    };
+  }
+  res.json({ latest: result });
 });
 
 sitesRouter.get('/:id', (req, res) => {
