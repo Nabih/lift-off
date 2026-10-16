@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+
+# Runtime state: database, master key, deploy keys, cloned repos
+data/
+.env
+.env.*
+!.env.example
+
+*.log
+npm-debug.log*
+.DS_Store

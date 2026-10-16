@@ -1,0 +1,219 @@
+import { MAX_CONCURRENT_BUILDS, repoDirFor } from './config.js';
+import { randomId } from './crypto.js';
+import { deployArtifact, resolveDistDir, rollbackRelease } from './deploy.js';
+import { syncRepo } from './git.js';
+import { createBuildLogger, type BuildLogger } from './log.js';
+import { logBus } from './logbus.js';
+import { runStreaming } from './process.js';
+import {
+  getDeployment,
+  getSite,
+  insertDeployment,
+  pruneDeployments,
+  updateDeployment,
+} from './store.js';
+import type { DeploymentKind, SiteRow } from './types.js';
+
+/* -------------------------------------------------------------------------- */
+/* Queue                                                                       */
+/* -------------------------------------------------------------------------- */
+
+const pending: string[] = [];
+let active = 0;
+
+function enqueue(siteId: string, triggeredBy: string, kind: DeploymentKind): string {
+  const site = getSite(siteId);
+  if (!site) throw new Error('Site not found.');
+
+  const deploymentId = randomId('dep');
+  insertDeployment({
+    id: deploymentId,
+    site_id: site.id,
+    kind,
+    status: 'queued',
+    commit_sha: null,
+    commit_message: null,
+    triggered_by: triggeredBy,
+    error: null,
+    queued_at: new Date().toISOString(),
+    started_at: null,
+    finished_at: null,
+  });
+
+  pending.push(deploymentId);
+  queueMicrotask(pump);
+  return deploymentId;
+}
+
+/**
+ * Creates a deployment record and schedules it. Builds run one-at-a-time by
+ * default (LIFTOFF_MAX_CONCURRENT_BUILDS) so a busy site cannot starve the box.
+ */
+export function enqueueDeployment(siteId: string, triggeredBy: string): string {
+  return enqueue(siteId, triggeredBy, 'deploy');
+}
+
+/** Queues a rollback of the `current` symlink to the previous release. */
+export function enqueueRollback(siteId: string, triggeredBy: string): string {
+  return enqueue(siteId, triggeredBy, 'rollback');
+}
+
+function pump(): void {
+  while (active < MAX_CONCURRENT_BUILDS && pending.length > 0) {
+    const deploymentId = pending.shift();
+    if (!deploymentId) break;
+    active += 1;
+    void runDeployment(deploymentId)
+      .catch(() => {
+        /* runDeployment records its own failures */
+      })
+      .finally(() => {
+        active -= 1;
+        pump();
+      });
+  }
+}
+
+export function queueDepth(): number {
+  return pending.length + active;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Build + deploy                                                              */
+/* -------------------------------------------------------------------------- */
+
+function buildEnvironment(site: SiteRow): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, CI: '1' };
+  try {
+    const extra = JSON.parse(site.env_vars) as Record<string, unknown>;
+    for (const [key, value] of Object.entries(extra)) {
+      env[key] = String(value);
+    }
+  } catch {
+    /* malformed env_vars are ignored; validated on write */
+  }
+  return env;
+}
+
+async function runCommand(
+  command: string,
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  log: BuildLogger,
+): Promise<void> {
+  log.info(`$ ${command}`);
+  const result = await runStreaming(command, [], {
+    cwd,
+    env,
+    shell: true,
+    onStdout: (line) => log.stdout(line),
+    onStderr: (line) => log.stderr(line),
+  });
+  if (result.timedOut) {
+    throw new Error(`Command timed out: ${command}`);
+  }
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Command exited with code ${result.exitCode}: ${command}`,
+    );
+  }
+}
+
+async function runDeployment(deploymentId: string): Promise<void> {
+  const deployment = getDeployment(deploymentId);
+  if (!deployment) return;
+
+  const site = getSite(deployment.site_id);
+  if (!site) {
+    updateDeployment(deploymentId, {
+      status: 'failed',
+      error: 'Site was deleted before the build started.',
+      finished_at: new Date().toISOString(),
+    });
+    return;
+  }
+
+  const log = createBuildLogger(deploymentId);
+  updateDeployment(deploymentId, {
+    status: 'running',
+    started_at: new Date().toISOString(),
+  });
+
+  try {
+    if (!site.enabled) {
+      throw new Error('This site is disabled. Enable it before deploying.');
+    }
+
+    if (deployment.kind === 'rollback') {
+      await performRollback(site, log);
+    } else {
+      await performDeploy(site, deploymentId, log);
+    }
+
+    updateDeployment(deploymentId, {
+      status: 'success',
+      finished_at: new Date().toISOString(),
+    });
+    logBus.finish(deploymentId, 'success');
+    pruneDeployments(site.id);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.error(message);
+    updateDeployment(deploymentId, {
+      status: 'failed',
+      error: message,
+      finished_at: new Date().toISOString(),
+    });
+    logBus.finish(deploymentId, 'failed');
+  }
+}
+
+/** Clone/fetch -> install -> build -> ship the output. */
+async function performDeploy(
+  site: SiteRow,
+  deploymentId: string,
+  log: BuildLogger,
+): Promise<void> {
+  log.info(`Deploying "${site.name}" from ${site.repo_url} (branch ${site.branch})`);
+
+  const { sha, subject, cloned } = await syncRepo(site, log);
+  log.info(
+    `${cloned ? 'Cloned' : 'Fast-forwarded'} to ${sha.slice(0, 7)} — ${subject}`,
+  );
+  updateDeployment(deploymentId, { commit_sha: sha, commit_message: subject });
+
+  const repoDir = repoDirFor(site.id);
+  const env = buildEnvironment(site);
+
+  if (site.install_command.trim()) {
+    await runCommand(site.install_command, repoDir, env, log);
+  }
+  if (site.build_command.trim()) {
+    await runCommand(site.build_command, repoDir, env, log);
+  }
+
+  const outputDir = resolveDistDir(repoDir, site.dist_dir);
+  log.info(`Using build output at ${site.dist_dir}`);
+
+  const result = await deployArtifact(site, outputDir, sha, log);
+
+  log.success(
+    result.strategy === 'releases'
+      ? `Deployed to ${result.releaseDir} (current -> this release)`
+      : `Deployed to ${result.targetDir}`,
+  );
+}
+
+/** Repoints `current` at the release before the active one. */
+async function performRollback(site: SiteRow, log: BuildLogger): Promise<void> {
+  if (site.deploy_strategy !== 'releases') {
+    throw new Error(
+      'Rollback is only available for sites using the "releases" deploy strategy.',
+    );
+  }
+  log.info(`Rolling back "${site.name}"`);
+  const target = await rollbackRelease(site.target_dir, log);
+  log.success(`Rolled back: current -> ${target}`);
+}
+
+export { logBus };

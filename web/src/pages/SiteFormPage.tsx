@@ -1,0 +1,495 @@
+import { useEffect, useState, type FormEvent } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { api } from '../api';
+import EnvVarsEditor from '../components/EnvVarsEditor';
+import type {
+  AuthType,
+  ConnectionTest,
+  DeployStrategy,
+  SiteInput,
+} from '../types';
+
+const DEFAULTS: SiteInput = {
+  name: '',
+  repoUrl: '',
+  branch: 'master',
+  authType: 'ssh',
+  accessToken: '',
+  installCommand: 'npm ci',
+  buildCommand: 'npm run build',
+  distDir: 'dist',
+  targetDir: '',
+  deployStrategy: 'releases',
+  keepReleases: 5,
+  envVars: {},
+  enabled: true,
+};
+
+/** How a discovered script would be run with the repo's package manager. */
+function runLabel(packageManager: string | null, scriptName: string): string {
+  switch (packageManager) {
+    case 'yarn':
+      return `yarn ${scriptName}`;
+    case 'pnpm':
+      return `pnpm ${scriptName}`;
+    case 'bun':
+      return `bun run ${scriptName}`;
+    default:
+      return `npm run ${scriptName}`;
+  }
+}
+
+export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [form, setForm] = useState<SiteInput>(DEFAULTS);
+  const [loading, setLoading] = useState(mode === 'edit');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hasAccessToken, setHasAccessToken] = useState(false);
+  const [hasSshKey, setHasSshKey] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [validation, setValidation] = useState<ConnectionTest | null>(null);
+  const [validateError, setValidateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (mode !== 'edit' || !id) return;
+    let cancelled = false;
+
+    api
+      .getSite(id)
+      .then((site) => {
+        if (cancelled) return;
+        setForm({
+          name: site.name,
+          repoUrl: site.repoUrl,
+          branch: site.branch,
+          authType: site.authType,
+          // Never populated from the API; blank means "keep the stored token".
+          accessToken: '',
+          installCommand: site.installCommand,
+          buildCommand: site.buildCommand,
+          distDir: site.distDir,
+          targetDir: site.targetDir,
+          deployStrategy: site.deployStrategy,
+          keepReleases: site.keepReleases,
+          envVars: site.envVars,
+          enabled: site.enabled,
+        });
+        setHasAccessToken(site.hasAccessToken);
+        setHasSshKey(site.sshPublicKey !== null);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Could not load the site.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, mode]);
+
+  function set<K extends keyof SiteInput>(key: K, value: SiteInput[K]) {
+    setForm((previous) => ({ ...previous, [key]: value }));
+    // Any change to the connection inputs makes a previous result stale.
+    if (
+      key === 'repoUrl' ||
+      key === 'branch' ||
+      key === 'authType' ||
+      key === 'accessToken'
+    ) {
+      setValidation(null);
+      setValidateError(null);
+    }
+  }
+
+  const canValidate =
+    form.repoUrl.trim().length > 0 &&
+    form.branch.trim().length > 0 &&
+    (form.authType === 'none' ||
+      (form.authType === 'token' &&
+        (Boolean(form.accessToken) || hasAccessToken)) ||
+      (form.authType === 'ssh' && hasSshKey));
+
+  async function validateConnection() {
+    setValidating(true);
+    setValidation(null);
+    setValidateError(null);
+    try {
+      setValidation(
+        await api.validateSite({
+          siteId: id,
+          repoUrl: form.repoUrl,
+          branch: form.branch,
+          authType: form.authType,
+          accessToken: form.accessToken || undefined,
+        }),
+      );
+    } catch (err) {
+      setValidation(null);
+      setValidateError(
+        err instanceof Error ? err.message : 'Could not validate the connection.',
+      );
+    } finally {
+      setValidating(false);
+    }
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const saved =
+        mode === 'create'
+          ? await api.createSite(form)
+          : await api.updateSite(id as string, form);
+      navigate(`/sites/${saved.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the site.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <div className="page muted">Loading…</div>;
+
+  const pkg = validation?.packageJson ?? null;
+  const showAside = validating || validation !== null || validateError !== null;
+
+  return (
+    <div className="page">
+      <header className="page-header">
+        <div>
+          <h1>{mode === 'create' ? 'New site' : 'Edit site'}</h1>
+          <p className="muted">
+            {mode === 'create'
+              ? 'Connect a repository and choose where its build output lands.'
+              : `Editing ${form.name}`}
+          </p>
+        </div>
+        <Link className="btn ghost" to={id ? `/sites/${id}` : '/'}>
+          Cancel
+        </Link>
+      </header>
+
+      {error && <div className="alert error">{error}</div>}
+
+      <div className={`site-form-layout${showAside ? ' with-aside' : ''}`}>
+        <form onSubmit={submit} className="stack">
+          <section className="card">
+            <h2>Repository</h2>
+
+            <div className="grid-2">
+              <label className="field">
+                <span>Site name</span>
+                <input
+                  className="input"
+                  value={form.name}
+                  required
+                  placeholder="Marketing site"
+                  onChange={(event) => set('name', event.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span>Branch</span>
+                <input
+                  className="input mono"
+                  value={form.branch}
+                  required
+                  placeholder="master"
+                  onChange={(event) => set('branch', event.target.value)}
+                />
+              </label>
+            </div>
+
+            <label className="field">
+              <span>Repository URL</span>
+              <input
+                className="input mono"
+                value={form.repoUrl}
+                required
+                placeholder={
+                  form.authType === 'token'
+                    ? 'https://github.com/owner/repo.git'
+                    : 'git@github.com:owner/repo.git'
+                }
+                onChange={(event) => set('repoUrl', event.target.value)}
+              />
+              <small className="hint">
+                {form.authType === 'ssh'
+                  ? 'Use the SSH URL — the deploy key handles authentication.'
+                  : form.authType === 'token'
+                    ? 'Use the HTTPS URL — the token is sent as an Authorization header.'
+                    : 'Use an https:// URL for public repositories.'}
+              </small>
+            </label>
+
+            <label className="field">
+              <span>Authentication</span>
+              <select
+                className="input"
+                value={form.authType}
+                onChange={(event) => set('authType', event.target.value as AuthType)}
+              >
+                <option value="ssh">SSH deploy key</option>
+                <option value="token">Personal access token (HTTPS)</option>
+                <option value="none">None (public repository over HTTPS)</option>
+              </select>
+              <small className="hint">
+                {form.authType === 'ssh'
+                  ? 'A dedicated keypair is generated per site. Add its public key to GitHub as a deploy key.'
+                  : form.authType === 'token'
+                    ? 'A fine-grained or classic token with read access to the repository. Stored encrypted.'
+                    : 'Only works for public repositories.'}
+              </small>
+            </label>
+
+            {form.authType === 'token' && (
+              <label className="field">
+                <span>Access token</span>
+                <input
+                  className="input mono"
+                  type="password"
+                  autoComplete="off"
+                  value={form.accessToken ?? ''}
+                  required={!hasAccessToken}
+                  placeholder={
+                    hasAccessToken
+                      ? '•••••••• (leave blank to keep the current token)'
+                      : 'github_pat_…'
+                  }
+                  onChange={(event) => set('accessToken', event.target.value)}
+                />
+                <small className="hint">
+                  {hasAccessToken
+                    ? 'A token is already stored. Type a new one only to replace it.'
+                    : 'Read-only access to the repository is enough.'}
+                </small>
+              </label>
+            )}
+
+            <div className="validate-row">
+              <button
+                className="btn"
+                type="button"
+                disabled={validating || !canValidate}
+                onClick={() => void validateConnection()}
+              >
+                {validating ? 'Validating…' : 'Validate connection'}
+              </button>
+              {validation && (
+                <span
+                  className={`badge ${
+                    validation.ok
+                      ? validation.branchFound
+                        ? 'badge-success'
+                        : 'badge-queued'
+                      : 'badge-failed'
+                  }`}
+                >
+                  {validation.ok
+                    ? validation.branchFound
+                      ? 'Reachable'
+                      : 'Branch missing'
+                    : 'Unreachable'}
+                </span>
+              )}
+            </div>
+            <small className="hint">
+              {!canValidate
+                ? form.authType === 'ssh'
+                  ? 'Save the site first to generate its deploy key, then validate.'
+                  : form.authType === 'token'
+                    ? 'Enter an access token, then validate.'
+                    : 'Enter a repository URL, then validate.'
+                : 'Checks the connection and lists the scripts in package.json.'}
+            </small>
+          </section>
+
+          <section className="card">
+            <h2>Build</h2>
+
+            <label className="field">
+              <span>Install command</span>
+              <input
+                className="input mono"
+                value={form.installCommand}
+                placeholder="npm ci"
+                onChange={(event) => set('installCommand', event.target.value)}
+              />
+              <small className="hint">Runs first. Leave empty to skip.</small>
+            </label>
+
+            <label className="field">
+              <span>Build command</span>
+              <input
+                className="input mono"
+                value={form.buildCommand}
+                placeholder="npm run build"
+                onChange={(event) => set('buildCommand', event.target.value)}
+              />
+            </label>
+
+            <label className="field">
+              <span>Output directory</span>
+              <input
+                className="input mono"
+                value={form.distDir}
+                required
+                placeholder="dist"
+                onChange={(event) => set('distDir', event.target.value)}
+              />
+              <small className="hint">
+                Path inside the repository that the build command produces.
+              </small>
+            </label>
+
+            <div className="field">
+              <span>Environment variables</span>
+              <EnvVarsEditor
+                value={form.envVars}
+                onChange={(next) => set('envVars', next)}
+              />
+              <small className="hint">
+                Passed to the install and build commands. Not stored in the repo.
+              </small>
+            </div>
+          </section>
+
+          <section className="card">
+            <h2>Deployment</h2>
+
+            <label className="field">
+              <span>Target directory</span>
+              <input
+                className="input mono"
+                value={form.targetDir}
+                required
+                placeholder="/var/www/my-site"
+                onChange={(event) => set('targetDir', event.target.value)}
+              />
+              <small className="hint">Absolute path on this server.</small>
+            </label>
+
+            <label className="field">
+              <span>Strategy</span>
+              <select
+                className="input"
+                value={form.deployStrategy}
+                onChange={(event) =>
+                  set('deployStrategy', event.target.value as DeployStrategy)
+                }
+              >
+                <option value="releases">
+                  Atomic releases + current symlink (rollback supported)
+                </option>
+                <option value="direct">Direct copy (overwrites target)</option>
+              </select>
+              <small className="hint">
+                {form.deployStrategy === 'releases'
+                  ? `Each build gets its own folder under <target>/releases, then a "current" symlink is swapped atomically. Point your web server at <target>/current.`
+                  : 'The target directory is emptied and replaced on every deploy. Brief downtime, no rollback.'}
+              </small>
+            </label>
+
+            {form.deployStrategy === 'releases' && (
+              <label className="field">
+                <span>Releases to keep</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={form.keepReleases}
+                  onChange={(event) =>
+                    set('keepReleases', Number(event.target.value) || 1)
+                  }
+                />
+                <small className="hint">Older releases beyond this count are pruned.</small>
+              </label>
+            )}
+
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={form.enabled}
+                onChange={(event) => set('enabled', event.target.checked)}
+              />
+              Enabled (disables the deploy button when unchecked)
+            </label>
+          </section>
+
+          <div className="form-actions">
+            <button className="btn primary" type="submit" disabled={saving}>
+              {saving ? 'Saving…' : mode === 'create' ? 'Create site' : 'Save changes'}
+            </button>
+          </div>
+        </form>
+
+        {showAside && (
+          <aside className="site-form-aside">
+            <section className="card">
+              <h2>Connection</h2>
+
+              {validating && <p className="muted small">Checking the repository…</p>}
+
+              {validateError && <div className="alert error">{validateError}</div>}
+
+              {validation && (
+                <div
+                  className={`alert ${
+                    validation.ok
+                      ? validation.branchFound
+                        ? 'success'
+                        : 'warning'
+                      : 'error'
+                  }`}
+                >
+                  {validation.message}
+                </div>
+              )}
+
+              {pkg && (
+                <>
+                  <p className="muted small">
+                    {pkg.name ? `${pkg.name} · ` : ''}
+                    {pkg.scripts.length > 0
+                      ? 'Click a script to use it as the build command.'
+                      : 'package.json has no scripts.'}
+                  </p>
+                  {pkg.scripts.length > 0 && (
+                    <ul className="command-list">
+                      {pkg.scripts.map((script) => {
+                        const label = runLabel(pkg.packageManager, script.name);
+                        return (
+                          <li key={script.name}>
+                            <button
+                              className="command-item"
+                              type="button"
+                              onClick={() => set('buildCommand', label)}
+                            >
+                              <span className="command-run mono">{label}</span>
+                              <span className="muted small ellipsis">
+                                {script.command}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </>
+              )}
+            </section>
+          </aside>
+        )}
+      </div>
+    </div>
+  );
+}
