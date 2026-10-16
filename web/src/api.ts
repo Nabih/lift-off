@@ -195,6 +195,7 @@ export const api = {
     siteId?: string;
     search?: string;
     user?: string;
+    type?: 'regular' | 'rollback' | 'redeploy';
     orderBy?: 'site' | 'user' | 'time';
     order?: 'asc' | 'desc';
     page?: number;
@@ -204,6 +205,7 @@ export const api = {
     if (options.siteId) params.set('siteId', options.siteId);
     if (options.search) params.set('search', options.search);
     if (options.user) params.set('user', options.user);
+    if (options.type) params.set('type', options.type);
     if (options.orderBy) params.set('orderBy', options.orderBy);
     if (options.order) params.set('order', options.order);
     if (options.page) params.set('page', String(options.page));

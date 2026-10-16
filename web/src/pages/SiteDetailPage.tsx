@@ -149,6 +149,7 @@ export default function SiteDetailPage() {
               disabled={busy !== null}
               onClick={() =>
                 void run('restore', async () => {
+                  if (!window.confirm(`Restore "${site.name}"? It becomes deployable again.`)) return;
                   await api.restoreSite(site.id);
                   await load();
                 })

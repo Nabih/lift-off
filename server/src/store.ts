@@ -141,6 +141,8 @@ export interface DeploymentListOptions {
   search?: string;
   /** Exact match on the username that triggered the deployment. */
   triggeredBy?: string;
+  /** regular = plain deploy, rollback = kind, redeploy = forced re-deployment. */
+  type?: 'regular' | 'rollback' | 'redeploy';
   /** Column to order by. Defaults to the queue time. */
   orderBy?: 'site' | 'user' | 'time';
   order?: 'asc' | 'desc';
@@ -183,6 +185,14 @@ export function listDeploymentsWithSiteName(
   if (options.triggeredBy?.trim()) {
     conditions.push('d.triggered_by = ?');
     params.push(options.triggeredBy.trim());
+  }
+
+  if (options.type === 'rollback') {
+    conditions.push("d.kind = 'rollback'");
+  } else if (options.type === 'redeploy') {
+    conditions.push('d.redeploy = 1');
+  } else if (options.type === 'regular') {
+    conditions.push("d.kind = 'deploy' AND d.redeploy = 0");
   }
 
   const column = ORDER_COLUMNS[options.orderBy ?? 'time'];
@@ -229,6 +239,14 @@ export function countDeploymentsWithSiteName(
   if (options.triggeredBy?.trim()) {
     conditions.push('d.triggered_by = ?');
     params.push(options.triggeredBy.trim());
+  }
+
+  if (options.type === 'rollback') {
+    conditions.push("d.kind = 'rollback'");
+  } else if (options.type === 'redeploy') {
+    conditions.push('d.redeploy = 1');
+  } else if (options.type === 'regular') {
+    conditions.push("d.kind = 'deploy' AND d.redeploy = 0");
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

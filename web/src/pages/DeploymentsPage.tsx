@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import CommitRef from '../components/CommitRef';
@@ -8,6 +8,20 @@ import { formatDateTime, formatDuration, formatRelative } from '../format';
 import type { Deployment } from '../types';
 
 const PER_PAGE = 10;
+
+/**
+ * Returns the value after it has stopped changing for `delay` ms. Typing in the
+ * search box updates the URL only once the user pauses, so we fire one request
+ * instead of one per keystroke.
+ */
+function useDebounced<T>(value: T, delay: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettled(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+  return settled;
+}
 
 export default function DeploymentsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -21,7 +35,16 @@ export default function DeploymentsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const search = searchParams.get('search') ?? '';
+  // Keep a local copy so typing stays responsive; the URL (and the request)
+  // only follow once typing pauses.
+  const [searchInput, setSearchInput] = useState(search);
+  const debouncedSearch = useDebounced(searchInput, 100);
   const user = searchParams.get('user') ?? '';
+  const type = (searchParams.get('type') ?? '') as
+    | ''
+    | 'regular'
+    | 'rollback'
+    | 'redeploy';
   const orderBy = (searchParams.get('orderBy') ?? 'time') as
     | 'site'
     | 'user'
@@ -41,12 +64,24 @@ export default function DeploymentsPage() {
     [searchParams, setSearchParams],
   );
 
+  // Push the debounced search into the URL. Writing it here (rather than on each
+  // keystroke) is what throttles the API calls.
+  useEffect(() => {
+    if (debouncedSearch === search) return;
+    const next = new URLSearchParams(searchParams);
+    if (debouncedSearch) next.set('search', debouncedSearch);
+    else next.delete('search');
+    next.delete('page');
+    setSearchParams(next, { replace: true });
+  }, [debouncedSearch, search, searchParams, setSearchParams]);
+
   const load = useCallback(async () => {
     try {
       const result = await api.listDeployments({
         siteId,
         search: search || undefined,
         user: user || undefined,
+        type: type || undefined,
         orderBy,
         order,
         page,
@@ -61,7 +96,7 @@ export default function DeploymentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [siteId, search, user, orderBy, order, page]);
+  }, [siteId, search, user, type, orderBy, order, page]);
 
   useEffect(() => {
     setLoading(true);
@@ -70,6 +105,11 @@ export default function DeploymentsPage() {
     const timer = window.setInterval(() => void load(), 5000);
     return () => window.clearInterval(timer);
   }, [load]);
+
+  // If the URL search changes from elsewhere (e.g. back button), mirror it.
+  useEffect(() => {
+    setSearchInput((current) => (current === search ? current : search));
+  }, [search]);
 
   const from = total === 0 ? 0 : (page - 1) * PER_PAGE + 1;
   const to = Math.min(page * PER_PAGE, total);
@@ -98,9 +138,9 @@ export default function DeploymentsPage() {
             <span>Site name</span>
             <input
               className="input"
-              value={search}
+              value={searchInput}
               placeholder="Search sites…"
-              onChange={(event) => setParam('search', event.target.value)}
+              onChange={(event) => setSearchInput(event.target.value)}
             />
           </label>
 
@@ -117,6 +157,20 @@ export default function DeploymentsPage() {
                   {name}
                 </option>
               ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Type</span>
+            <select
+              className="input"
+              value={type}
+              onChange={(event) => setParam('type', event.target.value)}
+            >
+              <option value="">All types</option>
+              <option value="regular">Regular</option>
+              <option value="rollback">Rollback</option>
+              <option value="redeploy">Redeployed</option>
             </select>
           </label>
 

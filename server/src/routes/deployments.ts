@@ -43,6 +43,12 @@ deploymentsRouter.get('/', (req, res) => {
     siteId: str(req.query.siteId),
     search: str(req.query.search),
     triggeredBy: str(req.query.user),
+    type:
+      req.query.type === 'rollback' || req.query.type === 'redeploy'
+        ? req.query.type
+        : req.query.type === 'regular'
+          ? 'regular'
+          : undefined,
     orderBy:
       req.query.orderBy === 'site' || req.query.orderBy === 'user'
         ? req.query.orderBy
