@@ -94,7 +94,9 @@ export default function ArchivedSitesPage() {
               {sites.map((site) => (
                 <tr key={site.id}>
                   <td>
-                    <span className="site-name">{site.name}</span>
+                    <Link className="site-name" to={`/sites/${site.id}`}>
+                      {site.name}
+                    </Link>
                     <span className="badge draft">archived</span>
                   </td>
                   <td className="mono small">{site.branch}</td>
