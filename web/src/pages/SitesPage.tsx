@@ -59,10 +59,10 @@ export default function SitesPage() {
   }, []);
 
   async function restore(site: Site) {
-    if (!window.confirm(`Restore "${site.name}"?`)) return;
+    if (!window.confirm(`Unarchive "${site.name}"?`)) return;
     await api.restoreSite(site.id);
     setSites((prev) => [...prev, site].sort((a, b) => a.name.localeCompare(b.name)));
-    setDeletedSites((prev) => prev.filter((s) => s.id !== site.id));
+    setArchivedSites((prev) => prev.filter((s) => s.id !== site.id));
   }
 
   return (
