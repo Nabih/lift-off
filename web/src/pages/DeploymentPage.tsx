@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import CommitRef from '../components/CommitRef';
+import ErrorAlert from '../components/ErrorAlert';
 import LogViewer from '../components/LogViewer';
 import StatusBadge from '../components/StatusBadge';
 import { formatDateTime, formatDuration } from '../format';
@@ -53,7 +54,7 @@ export default function DeploymentPage() {
   if (!deployment) {
     return (
       <div className="page">
-        <div className="alert error">{error ?? 'Deployment not found.'}</div>
+        <ErrorAlert message={error ?? 'Deployment not found.'} />
         <Link className="btn ghost" to="/deployments">
           Back to deployments
         </Link>
@@ -84,9 +85,9 @@ export default function DeploymentPage() {
         </Link>
       </header>
 
-      {error && <div className="alert error">{error}</div>}
+      {error && <ErrorAlert message={error} />}
       {deployment.status === 'failed' && deployment.error && (
-        <div className="alert error">{deployment.error}</div>
+        <ErrorAlert message={deployment.error} />
       )}
 
       <dl className="meta-list inline">

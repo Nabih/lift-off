@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../api';
+import ErrorAlert from './ErrorAlert';
 import { shortSha } from '../format';
 import type { DeployCheck, RemoteCommit, Site } from '../types';
 
@@ -285,7 +286,7 @@ export default function DeployDialog({
           </>
         )}
 
-        {error && <div className="alert error">{error}</div>}
+        {error && <ErrorAlert message={error} />}
 
         <div className="form-actions">
           <button

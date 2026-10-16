@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import CommitRef from '../components/CommitRef';
 import CopyButton from '../components/CopyButton';
+import ErrorAlert from '../components/ErrorAlert';
 import DeployDialog from '../components/DeployDialog';
 import StatusBadge from '../components/StatusBadge';
 import { formatDateTime, formatDuration, formatRelative, shortSha } from '../format';
@@ -81,7 +82,7 @@ export default function SiteDetailPage() {
   if (!site) {
     return (
       <div className="page">
-        <div className="alert error">{error ?? 'Site not found.'}</div>
+        <ErrorAlert message={error ?? 'Site not found.'} />
         <Link className="btn ghost" to="/">
           Back to sites
         </Link>
@@ -136,7 +137,7 @@ export default function SiteDetailPage() {
         </div>
       </header>
 
-      {error && <div className="alert error">{error}</div>}
+      {error && <ErrorAlert message={error} />}
 
       {site.archived && (
         <div className="alert warning">

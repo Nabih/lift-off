@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import ErrorAlert from '../components/ErrorAlert';
 import type { Site } from '../types';
 
 export default function ArchivedSitesPage() {
@@ -33,7 +34,7 @@ export default function ArchivedSitesPage() {
   if (!isAdmin) {
     return (
       <div className="page">
-        <div className="alert error">Administrator access is required.</div>
+        <ErrorAlert message="Administrator access is required." />
         <Link className="btn ghost" to="/">
           Back to sites
         </Link>
@@ -70,7 +71,7 @@ export default function ArchivedSitesPage() {
         </Link>
       </header>
 
-      {error && <div className="alert error">{error}</div>}
+      {error && <ErrorAlert message={error} />}
 
       {loading ? (
         <div className="muted">Loading…</div>

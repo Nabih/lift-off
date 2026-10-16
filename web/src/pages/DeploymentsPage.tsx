@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import CommitRef from '../components/CommitRef';
+import ErrorAlert from '../components/ErrorAlert';
 import StatusBadge from '../components/StatusBadge';
 import { formatDateTime, formatDuration, formatRelative } from '../format';
 import type { Deployment } from '../types';
@@ -44,7 +45,7 @@ export default function DeploymentsPage() {
         </div>
       </header>
 
-      {error && <div className="alert error">{error}</div>}
+      {error && <ErrorAlert message={error} />}
 
       {loading ? (
         <div className="muted">Loading…</div>

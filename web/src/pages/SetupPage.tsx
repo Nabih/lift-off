@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import ErrorAlert from '../components/ErrorAlert';
 
 /** Shown only on a fresh install: creates the first (owner) account. */
 export default function SetupPage() {
@@ -95,7 +96,7 @@ export default function SetupPage() {
           />
         </label>
 
-        {error && <div className="alert error">{error}</div>}
+        {error && <ErrorAlert message={error} />}
 
         <button className="btn primary block" type="submit" disabled={busy}>
           {busy ? 'Creating account…' : 'Create owner account'}

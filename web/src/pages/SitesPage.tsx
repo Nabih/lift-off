@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import DeployDialog from '../components/DeployDialog';
+import ErrorAlert from '../components/ErrorAlert';
 import StatusBadge from '../components/StatusBadge';
 import { formatRelative } from '../format';
 import type { Deployment, Site } from '../types';
@@ -75,7 +76,7 @@ export default function SitesPage() {
         )}
       </header>
 
-      {error && <div className="alert error">{error}</div>}
+      {error && <ErrorAlert message={error} />}
 
       {loading ? (
         <div className="muted">Loading sites…</div>

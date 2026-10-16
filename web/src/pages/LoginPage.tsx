@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
+import ErrorAlert from '../components/ErrorAlert';
 
 export default function LoginPage() {
   const { login, status } = useAuth();
@@ -61,7 +62,7 @@ export default function LoginPage() {
           />
         </label>
 
-        {error && <div className="alert error">{error}</div>}
+        {error && <ErrorAlert message={error} />}
 
         <button className="btn primary block" type="submit" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import ErrorAlert from '../components/ErrorAlert';
 
 export default function ForgotPasswordPage() {
   const [username, setUsername] = useState('');
@@ -58,7 +59,7 @@ export default function ForgotPasswordPage() {
               />
             </label>
 
-            {error && <div className="alert error">{error}</div>}
+            {error && <ErrorAlert message={error} />}
 
             <button className="btn primary block" type="submit" disabled={busy}>
               {busy ? 'Sending…' : 'Send reset link'}

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import ErrorAlert from '../components/ErrorAlert';
 import type { MailSettings } from '../types';
 
 export default function SettingsPage() {
@@ -142,7 +143,7 @@ function RecoveryEmailCard({ onSaved }: { onSaved: () => Promise<void> }) {
         <small className="hint">Leave the address blank and save to remove it.</small>
 
         {message && <div className="alert success">{message}</div>}
-        {error && <div className="alert error">{error}</div>}
+        {error && <ErrorAlert message={error} />}
 
         <div className="form-actions">
           <button className="btn primary" type="submit" disabled={busy}>
@@ -233,7 +234,7 @@ function ChangePasswordCard({ onSaved }: { onSaved: () => Promise<void> }) {
         </div>
 
         {message && <div className="alert success">{message}</div>}
-        {error && <div className="alert error">{error}</div>}
+        {error && <ErrorAlert message={error} />}
 
         <div className="form-actions">
           <button className="btn primary" type="submit" disabled={busy}>
@@ -428,7 +429,7 @@ function MailSettingsCard() {
         </label>
 
         {message && <div className="alert success">{message}</div>}
-        {error && <div className="alert error">{error}</div>}
+        {error && <ErrorAlert message={error} />}
 
         <div className="form-actions">
           <button className="btn primary" type="submit" disabled={saving}>

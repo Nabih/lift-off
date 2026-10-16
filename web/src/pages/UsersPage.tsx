@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import CheckboxList from '../components/CheckboxList';
+import ErrorAlert from '../components/ErrorAlert';
 import { formatDateTime, formatRelative } from '../format';
 import type { Role, Site, UserAccount } from '../types';
 
@@ -85,7 +86,7 @@ export default function UsersPage() {
         )}
       </header>
 
-      {error && <div className="alert error">{error}</div>}
+      {error && <ErrorAlert message={error} />}
       {notice && <div className="alert success">{notice}</div>}
 
       {(creating || editing) && (
@@ -285,7 +286,7 @@ function UserForm({ existing, sites, onCancel, onSaved }: FormProps) {
     <form className="card" onSubmit={submit}>
       <h2>{existing ? `Edit ${existing.username}` : 'New user'}</h2>
 
-      {error && <div className="alert error">{error}</div>}
+      {error && <ErrorAlert message={error} />}
 
       <div className="grid-2">
         <label className="field">

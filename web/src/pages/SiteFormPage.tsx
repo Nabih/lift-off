@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import CheckboxList from '../components/CheckboxList';
+import ErrorAlert from '../components/ErrorAlert';
 import EnvVarsEditor from '../components/EnvVarsEditor';
 import type {
   AuthType,
@@ -308,7 +309,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
         </div>
       </header>
 
-      {error && <div className="alert error">{error}</div>}
+      {error && <ErrorAlert message={error} />}
 
       <div className={`site-form-layout${showAside ? ' with-aside' : ''}`}>
         <form onSubmit={submit} className="stack">
@@ -711,7 +712,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
 
               {validating && <p className="muted small">Checking the repository…</p>}
 
-              {validateError && <div className="alert error">{validateError}</div>}
+              <ErrorAlert message={validateError} />
 
               {validation && (
                 <div

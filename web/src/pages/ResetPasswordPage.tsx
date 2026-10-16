@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
+import ErrorAlert from '../components/ErrorAlert';
 
 const REASON_MESSAGES: Record<string, string> = {
   invalid: 'That reset link is not valid.',
@@ -125,7 +126,7 @@ export default function ResetPasswordPage() {
               />
             </label>
 
-            {error && <div className="alert error">{error}</div>}
+            {error && <ErrorAlert message={error} />}
 
             <button className="btn primary block" type="submit" disabled={busy}>
               {busy ? 'Saving…' : 'Set new password'}
