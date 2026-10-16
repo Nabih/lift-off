@@ -8,14 +8,20 @@ import StatusBadge from '../components/StatusBadge';
 import { formatRelative } from '../format';
 import type { Deployment, Site } from '../types';
 
+/** Cards per page. Six fills two rows of the three-column grid. */
+const PER_PAGE = 6;
+
 export default function SitesPage() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const [sites, setSites] = useState<Site[]>([]);
   const [latest, setLatest] = useState<Record<string, Deployment>>({});
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [deployTarget, setDeployTarget] = useState<Site | null>(null);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
 
   useEffect(() => {
     let cancelled = false;
@@ -23,12 +29,14 @@ export default function SitesPage() {
     async function load() {
       try {
         const [siteResult, deploymentResult] = await Promise.all([
-          api.listSites(),
+          api.listSites({ page, limit: PER_PAGE }),
           api.listDeployments({ limit: 200 }),
         ]);
         if (cancelled) return;
 
         setSites(siteResult.sites);
+        setTotal(siteResult.total);
+        setPages(siteResult.pages);
         const bySite: Record<string, Deployment> = {};
         for (const deployment of deploymentResult.deployments) {
           if (!bySite[deployment.siteId]) bySite[deployment.siteId] = deployment;
@@ -47,7 +55,7 @@ export default function SitesPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [page]);
 
   async function restore(site: Site) {
     if (!window.confirm(`Unarchive "${site.name}"?`)) return;
@@ -151,6 +159,37 @@ export default function SitesPage() {
               </article>
             );
           })}
+        </div>
+      )}
+
+      {pages > 1 && (
+        <div className="pager">
+          <span className="muted small">
+            Showing {(page - 1) * PER_PAGE + 1}–
+            {Math.min(page * PER_PAGE, total)} of {total}
+          </span>
+          <span className="spacer" />
+          <button
+            type="button"
+            className="btn small"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+          >
+            Previous
+          </button>
+          <span className="muted small">
+            Page {page} of {pages}
+          </span>
+          <button
+            type="button"
+            className="btn small"
+            disabled={page >= pages || loading}
+            onClick={() =>
+              setPage((current) => Math.min(pages, current + 1))
+            }
+          >
+            Next
+          </button>
         </div>
       )}
 

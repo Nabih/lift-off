@@ -148,10 +148,28 @@ sitesRouter.get('/', (req, res) => {
   const user = requireUser(req);
   const includeDeleted =
     isAdmin(user) && String(req.query.deleted ?? '') === '1';
+  const rows = store
+    .listSitesForUser(user.id, isAdmin(user), includeDeleted)
+    .map((row) => siteForUser(row, user));
+
+  // Omitting ?limit returns everything in one page, so callers that need the
+  // whole list (user assignment, archived sites) keep working unchanged.
+  const total = rows.length;
+  const requestedLimit = Number(req.query.limit);
+  const perPage =
+    Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.trunc(requestedLimit)
+      : Math.max(total, 1);
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  const page = Math.min(Math.max(1, Number(req.query.page) || 1), pages);
+  const start = (page - 1) * perPage;
+
   res.json({
-    sites: store
-      .listSitesForUser(user.id, isAdmin(user), includeDeleted)
-      .map((row) => siteForUser(row, user)),
+    sites: rows.slice(start, start + perPage),
+    total,
+    page,
+    perPage,
+    pages,
   });
 });
 

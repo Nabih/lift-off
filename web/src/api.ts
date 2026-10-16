@@ -10,6 +10,7 @@ import type {
   Release,
   RemoteCommit,
   Site,
+  SiteList,
   SiteInput,
   UserAccount,
   UserInput,
@@ -124,10 +125,14 @@ export const api = {
     request<{ ok: boolean }>(`/api/users/${id}`, { method: 'DELETE' }),
 
   // ---- sites ------------------------------------------------------------
-  listSites: (options?: { deleted?: boolean }) =>
-    request<{ sites: Site[] }>(
-      `/api/sites${options?.deleted ? '?deleted=1' : ''}`,
-    ),
+  listSites: (options?: { deleted?: boolean; page?: number; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (options?.deleted) params.set('deleted', '1');
+    if (options?.page) params.set('page', String(options.page));
+    if (options?.limit) params.set('limit', String(options.limit));
+    const query = params.toString();
+    return request<SiteList>(`/api/sites${query ? `?${query}` : ''}`);
+  },
   restoreSite: (id: string) =>
     request<Site>(`/api/sites/${id}/restore`, { method: 'POST' }),
   getSite: (id: string) => request<Site>(`/api/sites/${id}`),

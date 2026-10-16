@@ -203,3 +203,12 @@ export interface DeploymentList {
   /** Usernames that have triggered a deployment, for the user filter. */
   users: string[];
 }
+
+/** Site listing envelope; `pages` is 1 and everything is returned when unpaged. */
+export interface SiteList {
+  sites: Site[];
+  total: number;
+  page: number;
+  perPage: number;
+  pages: number;
+}
