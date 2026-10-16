@@ -452,7 +452,13 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                   rows={5}
                   value={form.sshPrivateKey ?? ''}
                   placeholder="Generate one below, or paste an existing key…"
-                  onChange={(event) => set('sshPrivateKey', event.target.value)}
+                  onChange={(event) => {
+                    set('sshPrivateKey', event.target.value);
+                    if (event.target.value !== sshPublicKeyPreview) {
+                      // Clear stale derived preview when typing manually.
+                      setSshPublicKeyPreview(null);
+                    }
+                  }}
                 />
                 <small className="hint">
                   {hasSshKey && !form.sshPrivateKey
@@ -462,7 +468,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                       : 'Paste an existing key, or generate a fresh keypair below to test without saving first.'}
                 </small>
 
-                {sshPublicKeyPreview && !form.sshPrivateKey && (
+                {sshPublicKeyPreview && (
                   <>
                     <span className="hint-label">Public key (add this to GitHub → Settings → Deploy keys)</span>
                     <textarea
