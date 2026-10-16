@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import DeployDialog from '../components/DeployDialog';
 import StatusBadge from '../components/StatusBadge';
 import { formatRelative } from '../format';
 import type { Deployment, Site } from '../types';
@@ -13,7 +14,7 @@ export default function SitesPage() {
   const [latest, setLatest] = useState<Record<string, Deployment>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [deploying, setDeploying] = useState<string | null>(null);
+  const [deployTarget, setDeployTarget] = useState<Site | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,18 +47,6 @@ export default function SitesPage() {
       cancelled = true;
     };
   }, []);
-
-  async function deploy(site: Site) {
-    setDeploying(site.id);
-    setError(null);
-    try {
-      const { deploymentId } = await api.deploySite(site.id);
-      navigate(`/deployments/${deploymentId}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start deployment.');
-      setDeploying(null);
-    }
-  }
 
   return (
     <div className="page">
@@ -140,16 +129,24 @@ export default function SitesPage() {
                   <button
                     type="button"
                     className="btn primary small"
-                    disabled={!site.enabled || deploying === site.id}
-                    onClick={() => void deploy(site)}
+                    disabled={!site.enabled}
+                    onClick={() => setDeployTarget(site)}
                   >
-                    {deploying === site.id ? 'Starting…' : 'Deploy'}
+                    Deploy
                   </button>
                 </div>
               </article>
             );
           })}
         </div>
+      )}
+
+      {deployTarget && (
+        <DeployDialog
+          site={deployTarget}
+          onClose={() => setDeployTarget(null)}
+          onDeployed={(id) => navigate(`/deployments/${id}`)}
+        />
       )}
     </div>
   );
