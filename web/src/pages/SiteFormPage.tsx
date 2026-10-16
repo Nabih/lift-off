@@ -193,6 +193,17 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
       setValidation(result);
       // Populates the branch dropdown; an empty list falls back to free text.
       setRepoBranches(result.branches);
+      // If the current branch isn't on the remote but a common default is, pick
+      // it automatically so the form never silently keeps "master" for a repo
+      // whose default branch is "main".
+      if (result.branches.length > 0 && !result.branches.includes(form.branch.trim())) {
+        const preferred =
+          (result.branches.includes('main') && 'main') ||
+          (result.branches.includes('master') && 'master') ||
+          result.branches[0] ||
+          '';
+        if (preferred) setForm((previous) => ({ ...previous, branch: preferred }));
+      }
     } catch (err) {
       if (requestId !== validateRequest.current) return;
       setValidation(null);
