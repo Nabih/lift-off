@@ -15,7 +15,7 @@ export default function SitesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deployTarget, setDeployTarget] = useState<Site | null>(null);
-  const [deletedSites, setDeletedSites] = useState<Site[]>([]);
+  const [archivedSites, setArchivedSites] = useState<Site[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,7 +33,7 @@ export default function SitesPage() {
         if (isAdmin && !cancelled) {
           try {
             const del = await api.listSites({ deleted: true });
-            if (!cancelled) setDeletedSites(del.sites);
+            if (!cancelled) setArchivedSites(del.sites);
           } catch {
             // Non-fatal; listing still works.
           }
@@ -159,12 +159,12 @@ export default function SitesPage() {
         </div>
       )}
 
-      {isAdmin && deletedSites.length > 0 && (
+      {isAdmin && archivedSites.length > 0 && (
         <section className="card">
-          <h2>Recently deleted sites</h2>
+          <h2>Archived sites</h2>
           <p className="muted small">
-            Only administrators see these. Deleted sites keep their workspace, so
-            restoring brings a site back exactly as it was.
+            Only administrators see these. Archiving keeps a site’s configuration
+            and workspace, so it can be unarchived later with nothing lost.
           </p>
           <table className="table">
             <thead>
@@ -175,7 +175,7 @@ export default function SitesPage() {
               </tr>
             </thead>
             <tbody>
-              {deletedSites.map((site) => (
+              {archivedSites.map((site) => (
                 <tr key={site.id}>
                   <td className="site-name">{site.name}</td>
                   <td className="mono small">{site.branch}</td>
@@ -185,7 +185,7 @@ export default function SitesPage() {
                       className="btn primary small"
                       onClick={() => void restore(site)}
                     >
-                      Restore
+                      Unarchive
                     </button>
                   </td>
                 </tr>

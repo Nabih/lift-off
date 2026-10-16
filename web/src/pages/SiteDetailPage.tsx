@@ -96,7 +96,7 @@ export default function SiteDetailPage() {
           <h1>{site.name}</h1>
           {!site.enabled && <span className="badge muted">disabled</span>}
           {site.draft && <span className="badge draft">draft</span>}
-          {site.deleted && <span className="badge failed">deleted</span>}
+          {site.archived && <span className="badge muted">archived</span>}
         </div>
         <div className="header-actions">
           {isAdmin && (
@@ -364,23 +364,23 @@ export default function SiteDetailPage() {
           <section className="card danger-zone">
             <h2>Danger zone</h2>
             <p className="muted small">
-              Deleting a site removes its configuration, its local clone, and any user
-              assignments. Files already deployed to the target directory are left
-              untouched.
+              Archiving a site hides it and stops its deployments. Its configuration,
+              workspace, and user assignments are kept, so it can be restored later.
+              Files already deployed to the target directory are left untouched.
             </p>
             <button
               className="btn danger"
               type="button"
               disabled={busy !== null}
               onClick={() => {
-                if (!window.confirm(`Delete "${site.name}"? This cannot be undone.`)) return;
+                if (!window.confirm(`Archive "${site.name}"? It can be restored later.`)) return;
                 void run('delete', async () => {
                   await api.deleteSite(site.id);
                   navigate('/');
                 });
               }}
             >
-              Delete site
+              Archive site
             </button>
           </section>
         )}

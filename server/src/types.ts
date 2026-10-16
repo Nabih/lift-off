@@ -92,7 +92,7 @@ export interface SiteDTO {
   envVars: Record<string, string>;
   enabled: boolean;
   draft: boolean;
-  deleted: boolean;
+  archived: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -162,7 +162,7 @@ export function toSiteDTO(row: SiteRow): SiteDTO {
     envVars: safeJsonObject(row.env_vars),
     enabled: Boolean(row.enabled),
     draft: Boolean(row.draft),
-    deleted: Boolean(row.deleted_at),
+    archived: Boolean(row.deleted_at),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

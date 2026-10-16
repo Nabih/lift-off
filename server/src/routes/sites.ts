@@ -341,7 +341,7 @@ sitesRouter.delete('/:id', async (req, res, next) => {
       return;
     }
     if (site.deleted_at) {
-      res.status(409).json({ error: 'This site is already deleted.' });
+      res.status(409).json({ error: 'This site is already archived.' });
       return;
     }
     // Soft delete: keep the row (and its workspace) so an admin can restore it.
@@ -368,7 +368,7 @@ sitesRouter.post('/:id/restore', async (req, res, next) => {
       return;
     }
     if (!site.deleted_at) {
-      res.status(409).json({ error: 'This site is not deleted.' });
+      res.status(409).json({ error: 'This site is not archived.' });
       return;
     }
     store.updateSite(site.id, {
@@ -675,7 +675,7 @@ sitesRouter.post('/:id/deploy', async (req, res, next) => {
       return;
     }
     if (site.deleted_at) {
-      res.status(404).json({ error: 'This site is deleted.' });
+      res.status(404).json({ error: 'This site is archived.' });
       return;
     }
 
