@@ -1,6 +1,7 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { decrypt, encrypt } from './crypto.js';
 import { getSetting, setSetting } from './db.js';
+import { listUsers } from './store.js';
 
 /**
  * SMTP configuration, stored in the settings table and edited from the UI by an
@@ -15,6 +16,8 @@ export interface MailConfig {
   user: string;
   pass: string;
   from: string;
+  /** Master switch for deployment notifications. */
+  notifyEnabled: boolean;
   /** Recipients notified when a deployment finishes. */
   notifyEmail: string;
 }
@@ -28,6 +31,7 @@ export interface MailSettingsDTO {
   user: string;
   from: string;
   hasPassword: boolean;
+  notifyEnabled: boolean;
   notifyEmail: string;
   /** True when everything needed to send a reset email is present. */
   configured: boolean;
@@ -42,10 +46,48 @@ const KEYS = {
   pass: 'mail_smtp_pass',
   from: 'mail_from',
   notifyEmail: 'mail_notify_email',
+  notifyEnabled: 'mail_notify_enabled',
 } as const;
 
 /** Where deploy-finished notifications go until an admin changes it. */
 export const DEFAULT_NOTIFY_EMAIL = 'nabih@email.com';
+
+/**
+ * Notifications are opt-in, but an install that already has a recipient
+ * configured (pre-toggle) keeps receiving them instead of silently stopping.
+ */
+function resolveNotifyEnabled(): boolean {
+  const stored = getSetting(KEYS.notifyEnabled);
+  if (stored === 'true') return true;
+  if (stored === 'false') return false;
+  const email = getSetting(KEYS.notifyEmail);
+  return Boolean(email && email !== DEFAULT_NOTIFY_EMAIL);
+}
+
+/**
+ * Where deployment notifications go: the deployment address the user typed,
+ * plus every enabled account's recovery email. Deduplicated, order preserved.
+ */
+export function notificationRecipients(): string[] {
+  const typed = (getSetting(KEYS.notifyEmail) ?? '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value && value !== DEFAULT_NOTIFY_EMAIL);
+
+  const recovery = listUsers()
+    .filter((user) => !user.disabled && user.email)
+    .map((user) => String(user.email).trim().toLowerCase())
+    .filter(Boolean);
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const address of [...typed, ...recovery]) {
+    if (seen.has(address)) continue;
+    seen.add(address);
+    out.push(address);
+  }
+  return out;
+}
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
@@ -66,6 +108,7 @@ export function getMailConfig(): MailConfig | null {
     user: getSetting(KEYS.user) ?? '',
     pass: storedPassword ? decrypt(storedPassword) : '',
     from,
+    notifyEnabled: resolveNotifyEnabled(),
     notifyEmail: getSetting(KEYS.notifyEmail) ?? DEFAULT_NOTIFY_EMAIL,
   };
 }
@@ -83,6 +126,7 @@ export function mailSettingsForUI(): MailSettingsDTO {
     user: getSetting(KEYS.user) ?? '',
     from: getSetting(KEYS.from) ?? '',
     notifyEmail: getSetting(KEYS.notifyEmail) ?? DEFAULT_NOTIFY_EMAIL,
+    notifyEnabled: resolveNotifyEnabled(),
     hasPassword: Boolean(getSetting(KEYS.pass)),
     configured: isMailConfigured(),
   };
@@ -97,6 +141,7 @@ export interface MailSettingsInput {
   /** Omit or leave empty to keep the stored password. */
   pass?: string;
   from: string;
+  notifyEnabled?: boolean;
   /** Blank keeps the default recipient. */
   notifyEmail?: string;
 }
@@ -108,6 +153,9 @@ export function saveMailSettings(input: MailSettingsInput): void {
   setSetting(KEYS.secure, input.secure ? 'true' : 'false');
   setSetting(KEYS.user, input.user.trim());
   setSetting(KEYS.from, input.from.trim());
+  if (input.notifyEnabled !== undefined) {
+    setSetting(KEYS.notifyEnabled, input.notifyEnabled ? 'true' : 'false');
+  }
   const notify = (input.notifyEmail ?? '').trim();
   setSetting(
     KEYS.notifyEmail,
@@ -288,5 +336,11 @@ export async function sendDeploymentFinishedEmail(
     </div>
   `.trim();
 
-  await send(config, { to: config.notifyEmail, subject, text, html });
+  const to = notificationRecipients();
+  if (to.length === 0) {
+    throw new Error(
+      'No recipients: set a deployment email or add a recovery email.',
+    );
+  }
+  await send(config, { to: to.join(', '), subject, text, html });
 }

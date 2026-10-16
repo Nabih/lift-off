@@ -249,7 +249,8 @@ function ChangePasswordCard({ onSaved }: { onSaved: () => Promise<void> }) {
 /* -------------------------------------------------------------------------- */
 
 const EMPTY_MAIL: MailSettings = {
-  notifyEmail: 'nabih@email.com',
+  notifyEnabled: true,
+  notifyEmail: '',
   publicUrl: '',
   host: '',
   port: 587,
@@ -261,6 +262,7 @@ const EMPTY_MAIL: MailSettings = {
 };
 
 function MailSettingsCard() {
+  const { user } = useAuth();
   const [form, setForm] = useState<MailSettings>(EMPTY_MAIL);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(true);
@@ -292,6 +294,11 @@ function MailSettingsCard() {
   function set<K extends keyof MailSettings>(key: K, value: MailSettings[K]) {
     setForm((previous) => ({ ...previous, [key]: value }));
   }
+
+  // Deployment email + this account's recovery email. If neither exists there
+  // is nobody to notify, so warn before the user saves an empty setup.
+  const hasAnyRecipient =
+    Boolean(form.notifyEmail.trim()) || Boolean(user?.email);
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -421,20 +428,38 @@ function MailSettingsCard() {
           />
         </label>
 
-        <label className="field">
-          <span>Notify on deploy finish</span>
+        <label className="checkbox">
           <input
-            className="input"
-            type="email"
-            value={form.notifyEmail}
-            placeholder="nabih@email.com"
-            onChange={(event) => set('notifyEmail', event.target.value)}
+            type="checkbox"
+            checked={form.notifyEnabled}
+            onChange={(event) => set('notifyEnabled', event.target.checked)}
           />
-          <small className="hint">
-            Receives one email whenever a deployment finishes, whether it
-            succeeded or failed. Separate multiple addresses with commas.
-          </small>
+          Notify by email when a deployment finishes
         </label>
+
+        {form.notifyEnabled && (
+          <label className="field">
+            <span>Deployment email (optional)</span>
+            <input
+              className="input"
+              type="email"
+              value={form.notifyEmail}
+              placeholder="defaults to your recovery email"
+              onChange={(event) => set('notifyEmail', event.target.value)}
+            />
+            <small className="hint">
+              Sent to this address and to the recovery email of every account that
+              has one. Separate multiple addresses with commas.
+            </small>
+          </label>
+        )}
+
+        {form.notifyEnabled && !hasAnyRecipient && (
+          <div className="alert warning">
+            Notifications are on, but there is nobody to notify: add a recovery
+            email above, or fill in a deployment email below.
+          </div>
+        )}
 
         <label className="checkbox">
           <input

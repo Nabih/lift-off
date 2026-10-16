@@ -9,7 +9,11 @@ import {
 } from './deploy.js';
 import { syncRepo } from './git.js';
 import { createBuildLogger, type BuildLogger } from './log.js';
-import { getMailConfig, sendDeploymentFinishedEmail } from './mail.js';
+import {
+  getMailConfig,
+  notificationRecipients,
+  sendDeploymentFinishedEmail,
+} from './mail.js';
 import { logBus } from './logbus.js';
 import { runStreaming } from './process.js';
 import {
@@ -148,6 +152,8 @@ function notifyDeploymentFinished(deploymentId: string): void {
   try {
     const config = getMailConfig();
     if (!config) return;
+    // Opt-in switch.
+    if (!config.notifyEnabled) return;
 
     const deployment = getDeployment(deploymentId);
     if (!deployment) return;
@@ -178,7 +184,7 @@ function notifyDeploymentFinished(deploymentId: string): void {
       durationMs,
     })
       .then(() => {
-        log.success(`Notification email sent to ${config.notifyEmail}`);
+        log.success(`Notification email sent to ${notificationRecipients().join(', ')}`);
       })
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);

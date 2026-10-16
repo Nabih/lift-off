@@ -29,6 +29,8 @@ const mailSchema = z.object({
   /** Blank means "keep the stored password"; absent means the same. */
   pass: z.string().max(500).optional(),
   from: z.string().trim().max(320).default(''),
+  /** Master switch for deployment notifications. */
+  notifyEnabled: z.boolean().default(true),
   /** Comma-separated recipients notified when a deployment finishes. */
   notifyEmail: z.string().trim().max(640).optional(),
 });

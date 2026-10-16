@@ -179,6 +179,7 @@ export interface ConnectionTest {
 }
 
 export interface MailSettings {
+  notifyEnabled: boolean;
   /** Recipients notified when a deployment finishes. */
   notifyEmail: string;
   publicUrl: string;
