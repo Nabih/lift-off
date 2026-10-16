@@ -19,7 +19,8 @@ email password reset, (4) form-time repository validation + script discovery,
 assignment + filtered assignment lists, (7) branch dropdown from the validated
 repository, (8) re-deploy detection, forced deploys, and GitHub links,
 (9) moved the re-deployment label next to the branch and onto the Releases card,
-(10) a refresh button beside the branch dropdown.
+(10) a refresh button beside the branch dropdown, (11) picking the branch and an
+optional commit in the deploy dialog.
 
 ---
 
@@ -338,6 +339,44 @@ Validate button's disabled state (`validating || !canValidate`), and spins via a
 keyframe while in flight. Purely a second entry point to the existing validate
 endpoint — no server change.
 
+### Round 11 — choose the branch and an optional commit at deploy time
+
+The deploy dialog only ever deployed `site.branch` at its tip, and showed the branch
+as static text. Both are now chosen in the dialog.
+
+| Question | Decision |
+| --- | --- |
+| Branch | A dropdown of the remote's branches (one `ls-remote --heads`), defaulting to the site's branch |
+| Commit | An opt-in checkbox; when on, a text input backed by a `<datalist>` of the branch's last 10 commits |
+| Picking a commit | `<input list>` so a suggestion can be picked **or** an id typed — a plain `<select>` cannot do both |
+| Validating | One debounced `deploy-check` per change, returning a status the icon maps to green/red |
+| Deploying elsewhere | `POST /deploy` takes `{ branch, commit }`; the runner checks the branch out and detaches at the commit |
+
+**Design calls I made, and why:**
+
+- **Status is three-valued, and the icon is the primary signal.** `ok` → green,
+  `invalid` / `unreachable` → red, and grey until a check has run or while one is in
+  flight. The red states carry distinct messages ("branch not found" vs "commit not
+  found" vs "could not reach"), so a red dot is never a dead end.
+- **The commit picker is a datalist, not a select.** The requirement was a dropdown
+  the user can still type into, which is exactly what `<input list>` gives; a
+  `<select>` would make a typed id impossible.
+- **One `ls-remote` for everything.** `deploy-check` lists all branches *with their
+  shas*, so the branch's head, the picker's options, and the branch-exists test all
+  come from one network call rather than one per branch.
+- **Resolving a commit only fetches when a commit is given.** Branches come from the
+  `ls-remote`; a typed commit needs the objects locally, so it triggers a fetch and a
+  `rev-parse`. The full sha is resolved server-side and pinned onto the deployment, so
+  the runner never has to interpret an abbreviation.
+- **Changing branch clears the commit.** A commit belongs to a branch's history, so
+  carrying it across a branch switch would be wrong more often than right.
+- **Deploy requires `status === "ok"`.** Grey and red both disable the button, so an
+  unvalidated or invalid target cannot be submitted; the server re-checks regardless
+  and answers `BRANCH_NOT_FOUND` / `COMMIT_NOT_FOUND` / `ALREADY_LIVE`.
+- **Pinning a commit builds exactly that revision.** `syncRepo` resets to the branch,
+  then `checkout --detach <sha>`, so a release's name still carries the commit's sha
+  and rollback/pruning are unaffected.
+
 ---
 
 ## 3. How it works
@@ -531,7 +570,7 @@ untouched.
 from a second button, so the round-4 suite (25 checks) is unchanged and still passes.
 Verified by typecheck + production build and a clean Vite HMR update.
 
-**Re-deploy detection + forced deploys** (37 checks, all passing, against a
+**Re-deploy detection + forced deploys** (53 checks, all passing, against a
 dumb-HTTP git fixture that can be pushed to mid-test):
 - the first deploy recorded `branch: master` and the exact head commit, and was
   not a re-deployment
@@ -548,6 +587,16 @@ dumb-HTTP git fixture that can be pushed to mid-test):
   the commit unchanged
 - `GET /:id/releases` labelled exactly the forced re-deploy release (of two with
   the same sha) and left the other unlabelled
+- `deploy-check` listed the remote's branches, reported `status: "ok"` for a valid
+  target, `invalid` for an unknown branch, and `invalid`/`commitFound: false` for a
+  bogus commit
+- `GET /:id/commits` returned the branch's commits newest-first with full shas and
+  non-empty subjects
+- `POST /deploy` refused an unknown branch with `BRANCH_NOT_FOUND` and an unknown
+  commit with `COMMIT_NOT_FOUND`
+- a deploy pinned to an older commit built exactly that commit, recorded the chosen
+  branch, and was not flagged as a re-deployment; pinning the already-live commit was
+  correctly flagged as a re-deploy
 
 **Migrations** (11 checks, all passing):
 - pre-users DB with only a legacy `admin_password_hash`, booted with no

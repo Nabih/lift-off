@@ -112,10 +112,14 @@ async function git(
  * Clones the repo on first run, then hard-resets to the latest commit on the
  * configured branch. Tracked files are reset; ignored files (node_modules,
  * caches) are preserved for faster repeat builds.
+ *
+ * When `options.commit` is given the working tree is detached at that exact
+ * commit instead of the branch tip, so a specific revision can be deployed.
  */
 export async function syncRepo(
   site: SiteRow,
   log: BuildLogger,
+  options: { commit?: string | null } = {},
 ): Promise<RepoSyncResult> {
   const repoDir = repoDirFor(site.id);
   const branch = site.branch || 'master';
@@ -146,6 +150,12 @@ export async function syncRepo(
 
   await git(site, log, ['checkout', '-B', branch, `origin/${branch}`], repoDir);
   await git(site, log, ['reset', '--hard', `origin/${branch}`], repoDir);
+
+  if (options.commit) {
+    log.info(`Checking out requested commit ${options.commit} …`);
+    await git(site, log, ['checkout', '--detach', options.commit], repoDir);
+  }
+
   await git(site, log, ['clean', '-fd'], repoDir);
 
   const sha = (
@@ -156,6 +166,103 @@ export async function syncRepo(
   ).trim();
 
   return { sha, subject, cloned };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Commits                                                                     */
+/* -------------------------------------------------------------------------- */
+
+export interface CommitInfo {
+  sha: string;
+  shortSha: string;
+  subject: string;
+  author: string;
+  /** Committer date, ISO 8601. */
+  date: string;
+}
+
+/**
+ * Ensures the site's workspace holds a clone of the repository. Cloned without a
+ * working checkout — deploys create that themselves — so commits can be listed
+ * and resolved before the first deploy.
+ */
+async function ensureWorkspaceRepo(site: SiteRow): Promise<string> {
+  const repoDir = repoDirFor(site.id);
+  if (fs.existsSync(path.join(repoDir, '.git'))) return repoDir;
+
+  await fsp.rm(repoDir, { recursive: true, force: true });
+  await fsp.mkdir(path.dirname(repoDir), { recursive: true });
+  await capture(
+    'git',
+    ['clone', '--no-checkout', '--no-tags', site.repo_url, repoDir],
+    { cwd: process.cwd(), env: buildGitEnv(site), timeoutMs: 300_000 },
+  );
+  return repoDir;
+}
+
+/** Fetches every branch, so any branch's commits can be resolved locally. */
+async function fetchOriginBranches(site: SiteRow, repoDir: string): Promise<void> {
+  await capture('git', ['fetch', '--prune', '--no-tags', 'origin'], {
+    cwd: repoDir,
+    env: buildGitEnv(site),
+    timeoutMs: 180_000,
+  });
+}
+
+/** The most recent commits on a branch, newest first. */
+export async function listBranchCommits(
+  site: SiteRow,
+  branch: string,
+  limit = 10,
+): Promise<CommitInfo[]> {
+  const repoDir = await ensureWorkspaceRepo(site);
+  await fetchOriginBranches(site, repoDir);
+
+  const output = await capture(
+    'git',
+    [
+      'log',
+      '-n',
+      String(limit),
+      '--pretty=format:%H%x1f%h%x1f%s%x1f%an%x1f%cI',
+      `refs/remotes/origin/${branch}`,
+    ],
+    { cwd: repoDir, env: buildGitEnv(site), timeoutMs: 30_000 },
+  );
+
+  return output
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [sha = '', shortSha = '', subject = '', author = '', date = ''] =
+        line.split('\x1f');
+      return { sha, shortSha, subject, author, date };
+    });
+}
+
+/**
+ * Resolves a user-supplied commit-ish (full or abbreviated sha, tag, or branch)
+ * to a commit sha, or null when it does not exist. Fetches first, so a commit
+ * that has not been deployed yet can still be resolved.
+ */
+export async function resolveCommit(
+  site: SiteRow,
+  ref: string,
+): Promise<string | null> {
+  try {
+    const repoDir = await ensureWorkspaceRepo(site);
+    await fetchOriginBranches(site, repoDir);
+    const sha = (
+      await capture(
+        'git',
+        ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`],
+        { cwd: repoDir, env: buildGitEnv(site), timeoutMs: 15_000 },
+      )
+    ).trim();
+    return /^[0-9a-f]{7,40}$/i.test(sha) ? sha : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface ConnectionTestResult {
@@ -202,24 +309,36 @@ export async function testConnection(site: SiteRow): Promise<ConnectionTestResul
   }
 }
 
+export interface RemoteBranch {
+  name: string;
+  /** Commit the branch currently points at. */
+  sha: string;
+}
+
 /**
- * The commit the branch points at on the remote, or null when it cannot be
- * reached. Used to tell whether a deploy would just reproduce what is live.
+ * Lists the remote's branches with the commit each points at, in a single
+ * `ls-remote`. Powers the branch picker and tells whether a branch (and so a
+ * deploy target) exists. Throws when the remote cannot be reached.
  */
-export async function resolveRemoteHead(
-  site: GitAuth & { repo_url: string; branch: string },
-): Promise<string | null> {
-  try {
-    const output = await capture(
-      'git',
-      ['ls-remote', site.repo_url, `refs/heads/${site.branch}`],
-      { cwd: process.cwd(), env: buildGitEnv(site), timeoutMs: 30_000 },
+export async function listRemoteBranches(
+  site: GitAuth & { repo_url: string },
+): Promise<RemoteBranch[]> {
+  const output = await capture('git', ['ls-remote', '--heads', site.repo_url], {
+    cwd: process.cwd(),
+    env: buildGitEnv(site),
+    timeoutMs: 30_000,
+  });
+  return output
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [sha = '', ref = ''] = line.split(/\s+/);
+      return { name: ref.replace('refs/heads/', ''), sha };
+    })
+    .filter(
+      (branch) => branch.name.length > 0 && /^[0-9a-f]{7,40}$/i.test(branch.sha),
     );
-    const sha = output.split('\n')[0]?.split(/\s+/)[0] ?? '';
-    return /^[0-9a-f]{7,40}$/i.test(sha) ? sha : null;
-  } catch {
-    return null;
-  }
 }
 
 /* -------------------------------------------------------------------------- */

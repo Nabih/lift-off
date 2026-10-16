@@ -7,6 +7,7 @@ import type {
   LogLine,
   MailSettings,
   Release,
+  RemoteCommit,
   Site,
   SiteInput,
   UserAccount,
@@ -140,12 +141,25 @@ export const api = {
     authType: AuthType;
     accessToken?: string;
   }) => request<ConnectionTest>('/api/sites/validate', { method: 'POST', body: input }),
-  deploySite: (id: string, force = false) =>
+  deploySite: (
+    id: string,
+    options: { branch?: string; commit?: string | null; force?: boolean } = {},
+  ) =>
     request<{ deploymentId: string }>(`/api/sites/${id}/deploy`, {
       method: 'POST',
-      body: { force },
+      body: options,
     }),
-  deployCheck: (id: string) => request<DeployCheck>(`/api/sites/${id}/deploy-check`),
+  deployCheck: (id: string, params: { branch?: string; commit?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.branch) query.set('branch', params.branch);
+    if (params.commit) query.set('commit', params.commit);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return request<DeployCheck>(`/api/sites/${id}/deploy-check${suffix}`);
+  },
+  listCommits: (id: string, branch: string, limit = 10) =>
+    request<{ branch: string; commits: RemoteCommit[] }>(
+      `/api/sites/${id}/commits?branch=${encodeURIComponent(branch)}&limit=${limit}`,
+    ),
   rollbackSite: (id: string) =>
     request<{ deploymentId: string }>(`/api/sites/${id}/rollback`, {
       method: 'POST',

@@ -250,8 +250,18 @@ Simpler, but there is a brief window with no files and no rollback.
 
 ### Deploying, and re-deploying
 
-**Deploy now** always asks for confirmation first. The dialog shows the branch,
-the remote's current head commit, and what is currently live.
+**Deploy now** always asks for confirmation first, in a dialog that lets you choose
+exactly what to put live:
+
+- **Branch** — a dropdown of the remote's branches, defaulting to the site's
+  configured branch. You can deploy a different branch without editing the site.
+- **Commit** — off by default, meaning "the tip of that branch". Tick it to reveal a
+  picker listing the branch's **last 10 commits with their messages**; it is a text
+  field as well, so you can paste or type any commit id (full or abbreviated).
+- **Status icon** — grey while idle or checking, **green** once the connection
+  succeeds and both the branch and the commit are valid, and **red** when the
+  connection fails or the branch/commit does not exist. A short message explains why.
+- **Force deploy** appears when the chosen branch *and* commit are already serving.
 
 A deploy is blocked by default when it would change nothing. If the branch **and**
 the commit that would be deployed are the ones already serving, the dialog offers a
@@ -461,8 +471,9 @@ All `/api/sites` and `/api/deployments` routes require the session cookie.
 | `POST` | `/api/sites/:id/ssh-key` | Regenerate the deploy keypair. |
 | `PUT` | `/api/sites/:id/access` | Replace which Deployers can reach a site (**admin**). |
 | `POST` | `/api/sites/:id/test` | Verify repo access and branch. |
-| `POST` | `/api/sites/:id/deploy` | Queue a build. Body `{ force?: boolean }`; refused with `409` when the branch + commit are already live unless forced → `202 { deploymentId }`. |
-| `GET` | `/api/sites/:id/deploy-check` | What a deploy would do: the live branch/commit, the remote head, and whether it would be a re-deploy. |
+| `POST` | `/api/sites/:id/deploy` | Queue a build. Body `{ branch?, commit?, force? }`; refused with `409` for an unknown branch/commit or when the branch + commit are already live unless forced → `202 { deploymentId }`. |
+| `GET` | `/api/sites/:id/deploy-check` | What a deploy would do for `?branch=&commit=`: remote reachability, whether the branch and commit exist, the commit that would be built, the branches, and whether it would be a re-deploy. |
+| `GET` | `/api/sites/:id/commits` | The most recent commits on `?branch=` (default 10) with their messages, for the commit picker. |
 | `POST` | `/api/sites/:id/rollback` | Roll `current` back one release. |
 | `GET` | `/api/sites/:id/releases` | List releases and which is live. |
 | `GET` | `/api/deployments` | Deployment history (`?siteId=&limit=`). |
@@ -483,8 +494,9 @@ server/src/
   crypto.ts       AES-256-GCM + scrypt (no native deps)
   db.ts           node:sqlite schema, migrations, settings
   store.ts        All SQL queries
-  git.ts          Clone/fetch/reset, SSH and token auth, connection test,
-                  form-time validation + package.json discovery
+  git.ts          Clone/fetch/reset (or a pinned commit), SSH and token auth,
+                  connection test, form-time validation + package.json discovery,
+                  branch/commit listing and resolution
   ssh.ts          ssh-keygen keypair generation
   runner.ts       Build queue and deploy pipeline
   deploy.ts       Releases vs direct, atomic symlink, rollback, pruning

@@ -974,3 +974,31 @@ a.branch-ref:hover {
   justify-content: flex-end;
 }
 
+/* --------------------------------------------------- deploy dialog status */
+
+.deploy-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 4px;
+  color: var(--text-muted);
+}
+
+.status-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.status-dot.ok {
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgba(53, 198, 139, 0.16);
+}
+
+.status-dot.error {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(240, 97, 109, 0.16);
+}
+

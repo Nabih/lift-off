@@ -23,8 +23,10 @@ const pending: string[] = [];
 let active = 0;
 
 export interface EnqueueOptions {
-  /** Branch to record on the deployment. Defaults to the site's current branch. */
+  /** Branch to deploy. Defaults to the site's configured branch. */
   branch?: string | null;
+  /** Exact commit to check out; the branch tip is used when omitted. */
+  commit?: string | null;
   /** Mark the deployment as a forced re-deploy of what was already live. */
   redeploy?: boolean;
 }
@@ -45,7 +47,9 @@ function enqueue(
     kind,
     status: 'queued',
     branch: options.branch ?? site.branch,
-    commit_sha: null,
+    // The requested commit (already resolved to a full sha) until the deploy
+    // records the commit it actually built.
+    commit_sha: options.commit ?? null,
     commit_message: null,
     redeploy: options.redeploy ? 1 : 0,
     release_name: null,
@@ -167,7 +171,12 @@ async function runDeployment(deploymentId: string): Promise<void> {
     if (deployment.kind === 'rollback') {
       await performRollback(site, deploymentId, log);
     } else {
-      await performDeploy(site, deploymentId, log);
+      // The branch and (optional) commit were chosen when the deploy was queued;
+      // they can differ from the site's configured branch.
+      await performDeploy(site, deploymentId, log, {
+        branch: deployment.branch || site.branch,
+        commit: deployment.commit_sha,
+      });
     }
 
     updateDeployment(deploymentId, {
@@ -193,16 +202,27 @@ async function performDeploy(
   site: SiteRow,
   deploymentId: string,
   log: BuildLogger,
+  target: { branch: string; commit: string | null },
 ): Promise<void> {
-  log.info(`Deploying "${site.name}" from ${site.repo_url} (branch ${site.branch})`);
+  log.info(
+    `Deploying "${site.name}" from ${site.repo_url} (branch ${target.branch}${
+      target.commit ? `, commit ${target.commit.slice(0, 7)}` : ''
+    })`,
+  );
 
-  const { sha, subject, cloned } = await syncRepo(site, log);
+  // syncRepo checks out the branch it is given, so pass the branch chosen for
+  // this deploy rather than the site's configured one.
+  const { sha, subject, cloned } = await syncRepo(
+    { ...site, branch: target.branch },
+    log,
+    { commit: target.commit },
+  );
   log.info(
     `${cloned ? 'Cloned' : 'Fast-forwarded'} to ${sha.slice(0, 7)} — ${subject}`,
   );
-  // Record the branch we actually built, in case it changed since enqueue.
+  // Record what we actually built, in case it changed since enqueue.
   updateDeployment(deploymentId, {
-    branch: site.branch,
+    branch: target.branch,
     commit_sha: sha,
     commit_message: subject,
   });

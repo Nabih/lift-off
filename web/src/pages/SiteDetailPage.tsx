@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
@@ -6,11 +6,28 @@ import CommitRef from '../components/CommitRef';
 import CopyButton from '../components/CopyButton';
 import StatusBadge from '../components/StatusBadge';
 import { formatDateTime, formatDuration, formatRelative, shortSha } from '../format';
-import type { ConnectionTest, DeployCheck, Deployment, Release, Site } from '../types';
+import type {
+  ConnectionTest,
+  DeployCheck,
+  Deployment,
+  Release,
+  RemoteCommit,
+  Site,
+} from '../types';
 
-/** The pre-deploy confirmation, including whether a force is required. */
+/** The pre-deploy confirmation: choose a branch/commit and see whether it is valid. */
 interface DeployDialogState {
+  branch: string;
+  /** The optional "Commit" toggle; the picker only shows once it is on. */
+  commitEnabled: boolean;
+  /** Raw text of the commit field — a sha, but anything can be typed. */
+  commit: string;
+  /** Commit suggestions for the picker. */
+  commits: RemoteCommit[];
+  commitsLoading: boolean;
   check: DeployCheck | null;
+  /** The check request itself failed (as opposed to the repo being unreachable). */
+  checkError: string | null;
   checking: boolean;
   force: boolean;
 }
@@ -28,6 +45,8 @@ export default function SiteDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [deployDialog, setDeployDialog] = useState<DeployDialogState | null>(null);
+  /** Monotonic id so a slow check cannot overwrite a newer one. */
+  const checkRequest = useRef(0);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -74,43 +93,164 @@ export default function SiteDetailPage() {
   }
 
   /**
-   * A deploy is never immediate: this always opens a confirmation. It asks the
-   * server whether the branch and commit are already live so it can require a
-   * deliberate force before re-deploying them.
+   * Validates a branch (and optional commit) against the remote. Slow responses
+   * are dropped so a stale result cannot overwrite a newer one.
    */
-  async function openDeployDialog() {
+  async function runCheck(branch: string, commit: string) {
     if (!site) return;
-    setDeployDialog({ check: null, checking: true, force: false });
-    let check: DeployCheck | null = null;
+    const requestId = (checkRequest.current += 1);
+    setDeployDialog((current) => (current ? { ...current, checking: true } : current));
     try {
-      check = await api.deployCheck(site.id);
-    } catch {
-      // The check needs the network. If it fails we still confirm; the deploy
-      // endpoint re-checks and rejects an accidental re-deploy with a clear
-      // message rather than silently blocking.
+      const check = await api.deployCheck(site.id, {
+        branch,
+        commit: commit.trim() || undefined,
+      });
+      if (requestId !== checkRequest.current) return;
+      setDeployDialog((current) =>
+        current ? { ...current, check, checking: false, checkError: null } : current,
+      );
+    } catch (err) {
+      if (requestId !== checkRequest.current) return;
+      setDeployDialog((current) =>
+        current
+          ? {
+              ...current,
+              check: null,
+              checking: false,
+              checkError: err instanceof Error ? err.message : 'Check failed.',
+            }
+          : current,
+      );
     }
-    setDeployDialog({ check, checking: false, force: false });
+  }
+
+  // Re-check whenever the target changes. Debounced so typing a commit id does
+  // not fire a request per keystroke. Deliberately keyed on the branch/commit
+  // only — updating `check`/`checking` must not re-trigger it.
+  useEffect(() => {
+    if (!deployDialog || !site) return;
+    const handle = window.setTimeout(() => {
+      void runCheck(
+        deployDialog.branch,
+        deployDialog.commitEnabled ? deployDialog.commit : '',
+      );
+    }, 300);
+    return () => window.clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    deployDialog?.branch,
+    deployDialog?.commit,
+    deployDialog?.commitEnabled,
+    site?.id,
+  ]);
+
+  /** Loads the recent commits for the picker. */
+  async function loadCommits(branch: string) {
+    if (!site) return;
+    setDeployDialog((current) =>
+      current ? { ...current, commitsLoading: true } : current,
+    );
+    try {
+      const { commits } = await api.listCommits(site.id, branch);
+      setDeployDialog((current) =>
+        current && current.branch === branch
+          ? { ...current, commits, commitsLoading: false }
+          : current,
+      );
+    } catch {
+      setDeployDialog((current) =>
+        current ? { ...current, commits: [], commitsLoading: false } : current,
+      );
+    }
+  }
+
+  /** A deploy is never immediate: this always opens the confirmation dialog. */
+  function openDeployDialog() {
+    if (!site) return;
+    setDeployDialog({
+      branch: site.branch,
+      commitEnabled: false,
+      commit: '',
+      commits: [],
+      commitsLoading: false,
+      check: null,
+      checkError: null,
+      checking: true,
+      force: false,
+    });
+  }
+
+  function pickBranch(branch: string) {
+    if (branch === deployDialog?.branch) return;
+    // A commit belongs to a branch, so switching branch clears it.
+    setDeployDialog((current) =>
+      current ? { ...current, branch, commit: '', force: false } : current,
+    );
+    if (deployDialog?.commitEnabled) void loadCommits(branch);
+  }
+
+  function toggleCommit(enabled: boolean) {
+    setDeployDialog((current) =>
+      current
+        ? {
+            ...current,
+            commitEnabled: enabled,
+            commit: enabled ? current.commit : '',
+            force: false,
+          }
+        : current,
+    );
+    if (enabled && deployDialog) void loadCommits(deployDialog.branch);
+  }
+
+  function setCommit(value: string) {
+    setDeployDialog((current) =>
+      current ? { ...current, commit: value, force: false } : current,
+    );
   }
 
   async function confirmDeploy() {
     if (!site || !deployDialog) return;
-    const { force } = deployDialog;
+    const { branch, commitEnabled, commit, force } = deployDialog;
+    const commitValue = commitEnabled ? commit.trim() : '';
     await run('deploy', async () => {
       try {
-        const { deploymentId } = await api.deploySite(site.id, force);
+        const { deploymentId } = await api.deploySite(site.id, {
+          branch,
+          commit: commitValue || undefined,
+          force,
+        });
         setDeployDialog(null);
         navigate(`/deployments/${deploymentId}`);
       } catch (err) {
-        // A 409 means it turned out to be a re-deploy (e.g. the check was
-        // stale). Keep the dialog open and surface the force option.
+        // A 409 means the server disagreed with our check (e.g. a race).
+        // Re-check so the dialog reflects the current state.
         if (err instanceof ApiError && err.status === 409) {
-          const check = await api.deployCheck(site.id).catch(() => null);
-          setDeployDialog({ check, checking: false, force: false });
+          void runCheck(branch, commitValue);
         }
         throw err;
       }
     });
   }
+
+  // Status icon tone: green when the branch/commit check passes, red when it
+  // fails or the repo is unreachable, grey while idle or checking.
+  const deployTone: 'idle' | 'ok' | 'error' = !deployDialog
+    ? 'idle'
+    : deployDialog.checking
+      ? 'idle'
+      : deployDialog.check?.status === 'ok'
+        ? 'ok'
+        : deployDialog.check || deployDialog.checkError
+          ? 'error'
+          : 'idle';
+  const deployMessage = !deployDialog
+    ? ''
+    : deployDialog.checking
+      ? 'Checking…'
+      : (deployDialog.check?.message ??
+        deployDialog.checkError ??
+        'Not checked yet.');
 
   if (loading) return <div className="page muted">Loading…</div>;
   if (!site) {
@@ -427,38 +567,75 @@ export default function SiteDetailPage() {
           >
             <h2>Deploy “{site.name}”?</h2>
 
-            {deployDialog.checking ? (
-              <p className="muted small">Checking the repository…</p>
-            ) : (
-              <dl className="meta-list inline">
-                <div>
-                  <dt>Branch</dt>
-                  <dd className="mono">{site.branch}</dd>
-                </div>
-                <div>
-                  <dt>Remote head</dt>
-                  <dd className="mono" title={deployDialog.check?.remoteSha ?? ''}>
-                    {deployDialog.check?.remoteSha
-                      ? shortSha(deployDialog.check.remoteSha)
-                      : 'unknown'}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Live</dt>
-                  <dd className="mono" title={deployDialog.check?.live?.commitSha ?? ''}>
-                    {deployDialog.check?.live?.commitSha
-                      ? shortSha(deployDialog.check.live.commitSha)
-                      : 'nothing yet'}
-                  </dd>
-                </div>
-              </dl>
+            <label className="field">
+              <span>Branch</span>
+              <select
+                className="input mono"
+                value={deployDialog.branch}
+                onChange={(event) => pickBranch(event.target.value)}
+              >
+                {!deployDialog.check?.branches.includes(deployDialog.branch) && (
+                  <option value={deployDialog.branch}>{deployDialog.branch}</option>
+                )}
+                {(deployDialog.check?.branches ?? []).map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={deployDialog.commitEnabled}
+                onChange={(event) => toggleCommit(event.target.checked)}
+              />
+              Commit
+            </label>
+
+            {deployDialog.commitEnabled && (
+              <label className="field">
+                <span>Commit</span>
+                <input
+                  className="input mono"
+                  list="deploy-commit-options"
+                  value={deployDialog.commit}
+                  autoComplete="off"
+                  placeholder="Branch tip (leave blank) or a commit id"
+                  onChange={(event) => setCommit(event.target.value)}
+                />
+                <datalist id="deploy-commit-options">
+                  {deployDialog.commits.map((entry) => (
+                    <option key={entry.sha} value={entry.sha}>
+                      {entry.shortSha} · {entry.subject}
+                    </option>
+                  ))}
+                </datalist>
+                <small className="hint">
+                  {deployDialog.commitsLoading
+                    ? 'Loading recent commits…'
+                    : deployDialog.commits.length > 0
+                      ? `Last ${deployDialog.commits.length} commit${
+                          deployDialog.commits.length === 1 ? '' : 's'
+                        } on ${deployDialog.branch}. Pick one or type your own id.`
+                      : 'Type a commit id. Leave blank for the branch tip.'}
+                </small>
+              </label>
             )}
+
+            <div className="deploy-status">
+              <span className={`status-dot ${deployTone}`} aria-hidden="true" />
+              <span className="small" title={deployMessage}>
+                {deployMessage}
+              </span>
+            </div>
 
             {deployDialog.check?.wouldRedeploy && (
               <>
                 <div className="alert warning">
-                  Branch “{site.branch}” at commit{' '}
-                  {shortSha(deployDialog.check.remoteSha)} is already live.
+                  Branch “{deployDialog.branch}” at commit{' '}
+                  {shortSha(deployDialog.check.deployCommit)} is already live.
                 </div>
                 <label className="checkbox">
                   <input
@@ -491,6 +668,7 @@ export default function SiteDetailPage() {
                 disabled={
                   busy !== null ||
                   deployDialog.checking ||
+                  deployDialog.check?.status !== 'ok' ||
                   Boolean(deployDialog.check?.wouldRedeploy && !deployDialog.force)
                 }
                 onClick={() => void confirmDeploy()}

@@ -99,11 +99,36 @@ export interface Deployment {
 
 /** What a deploy would do, from `GET /api/sites/:id/deploy-check`. */
 export interface DeployCheck {
+  /** Branch the check was run for (the requested one, or the site's default). */
   branch: string;
-  live: { branch: string | null; commitSha: string | null } | null;
+  /** Every branch on the remote, for the picker. */
+  branches: string[];
+  /** The remote answered. */
+  reachable: boolean;
+  branchFound: boolean;
+  /** Drives the dialog's status icon: ok = green, invalid/unreachable = red. */
+  status: 'ok' | 'invalid' | 'unreachable';
+  message: string;
+  /** Head of `branch` on the remote. */
   remoteSha: string | null;
-  /** Both the branch and the commit already match what is live. */
+  /** The commit the user asked for, if any. */
+  requestedCommit: string | null;
+  /** Commit that would be built; the branch head when no commit was requested. */
+  deployCommit: string | null;
+  /** True when no commit was requested, or the requested commit was resolved. */
+  commitFound: boolean;
+  live: { branch: string | null; commitSha: string | null } | null;
+  /** The branch and commit already match what is live. */
   wouldRedeploy: boolean;
+}
+
+/** One entry in the deploy dialog's commit picker. */
+export interface RemoteCommit {
+  sha: string;
+  shortSha: string;
+  subject: string;
+  author: string;
+  date: string;
 }
 
 export type LogStream = 'info' | 'stdout' | 'stderr' | 'error' | 'success';

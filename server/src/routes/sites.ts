@@ -6,7 +6,13 @@ import type { AuthUser } from '../auth.js';
 import { WORKSPACES_DIR, keyPathFor } from '../config.js';
 import { encrypt, randomId } from '../crypto.js';
 import { listReleases, validateTargetDir } from '../deploy.js';
-import { resolveRemoteHead, testConnection, validateRepo } from '../git.js';
+import {
+  listBranchCommits,
+  listRemoteBranches,
+  resolveCommit,
+  testConnection,
+  validateRepo,
+} from '../git.js';
 import { canAccessSite, firstIssue, isAdmin, requireUser } from '../guards.js';
 import { enqueueDeployment, enqueueRollback } from '../runner.js';
 import { generateSshKeypair } from '../ssh.js';
@@ -444,27 +450,93 @@ function sameCommit(a: string | null, b: string | null): boolean {
   return a.slice(0, length).toLowerCase() === b.slice(0, length).toLowerCase();
 }
 
+function firstLine(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  return text.split('\n')[0] ?? text;
+}
+
+interface DeployTargetInput {
+  branch?: string;
+  commit?: string;
+}
+
 /**
- * Describes what a deploy of this site would do: the branch and commit that are
- * currently live, the remote's head for the configured branch, and whether the
- * two are the same (which makes a deploy a no-op unless it is forced).
- *
- * The remote lookup needs the network, so a failure leaves `remoteSha` null and
- * `wouldRedeploy` false — the deploy itself is then free to fail with a clearer
- * message rather than being blocked here.
+ * Describes what a deploy of this site would do for a chosen branch and optional
+ * commit: whether the remote is reachable, whether the branch and commit exist,
+ * what commit would be built, whether that would reproduce what is already live,
+ * and the list of branches for the picker. `status` drives the dialog's icon:
+ * "ok" (green), "invalid"/"unreachable" (red). The caller shows grey until a
+ * check has run.
  */
-async function buildDeployCheck(site: SiteRow) {
+async function buildDeployCheck(site: SiteRow, input: DeployTargetInput = {}) {
+  const branch = (input.branch ?? '').trim() || site.branch;
+  const requestedCommit = (input.commit ?? '').trim() || null;
+
+  let branches: Awaited<ReturnType<typeof listRemoteBranches>> = [];
+  let reachable = true;
+  let reachError = '';
+  try {
+    branches = await listRemoteBranches(site);
+  } catch (error) {
+    reachable = false;
+    reachError = firstLine(error);
+  }
+
+  const match = branches.find((entry) => entry.name === branch);
+  const branchFound = reachable && Boolean(match);
+  const remoteSha = match?.sha ?? null;
+
+  // Resolve the requested commit; without one the branch tip is the target.
+  let deployCommit = remoteSha;
+  let commitFound = true;
+  if (requestedCommit) {
+    const resolved = reachable ? await resolveCommit(site, requestedCommit) : null;
+    commitFound = Boolean(resolved);
+    deployCommit = resolved ?? null;
+  }
+
   const live = store.getLiveDeployment(site.id);
-  const remoteSha = await resolveRemoteHead(site);
-  const branchMatches = Boolean(live && live.branch === site.branch);
-  const commitMatches = Boolean(live && sameCommit(live.commit_sha, remoteSha));
+  const wouldRedeploy =
+    reachable &&
+    branchFound &&
+    commitFound &&
+    Boolean(live && live.branch === branch) &&
+    sameCommit(live?.commit_sha ?? null, deployCommit);
+
+  const valid = reachable && branchFound && commitFound;
+  const status: 'ok' | 'invalid' | 'unreachable' = !reachable
+    ? 'unreachable'
+    : valid
+      ? 'ok'
+      : 'invalid';
+
+  let message: string;
+  if (!reachable) {
+    message = `Could not reach the repository. ${reachError}`;
+  } else if (!branchFound) {
+    message = `Branch "${branch}" was not found on the remote.`;
+  } else if (!commitFound) {
+    message = `Commit "${requestedCommit}" was not found in the repository.`;
+  } else if (requestedCommit) {
+    message = `Ready: ${branch} at ${(deployCommit ?? '').slice(0, 7)}.`;
+  } else {
+    message = `Ready: the tip of ${branch} (${(remoteSha ?? '').slice(0, 7)}).`;
+  }
+
   return {
-    branch: site.branch,
-    live: live
-      ? { branch: live.branch, commitSha: live.commit_sha }
-      : null,
+    branch,
+    branches: branches.map((entry) => entry.name),
+    reachable,
+    branchFound,
+    status,
+    message,
     remoteSha,
-    wouldRedeploy: branchMatches && commitMatches,
+    requestedCommit,
+    /** Commit that would be built; the branch head when no commit was given. */
+    deployCommit,
+    commitFound,
+    live: live ? { branch: live.branch, commitSha: live.commit_sha } : null,
+    wouldRedeploy,
   };
 }
 
@@ -472,7 +544,32 @@ sitesRouter.get('/:id/deploy-check', async (req, res, next) => {
   try {
     const site = loadSiteForRequest(req, res);
     if (!site) return;
-    res.json(await buildDeployCheck(site));
+    res.json(
+      await buildDeployCheck(site, {
+        branch: typeof req.query.branch === 'string' ? req.query.branch : undefined,
+        commit: typeof req.query.commit === 'string' ? req.query.commit : undefined,
+      }),
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** The most recent commits on a branch, for the commit picker in the deploy dialog. */
+sitesRouter.get('/:id/commits', async (req, res, next) => {
+  try {
+    const site = loadSiteForRequest(req, res);
+    if (!site) return;
+    const branch =
+      (typeof req.query.branch === 'string' ? req.query.branch : '').trim() ||
+      site.branch;
+    const requestedLimit = Number(req.query.limit);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 50)
+      : 10;
+    // A missing branch just yields no suggestions; the check reports why.
+    const commits = await listBranchCommits(site, branch, limit).catch(() => []);
+    res.json({ branch, commits });
   } catch (error) {
     next(error);
   }
@@ -487,13 +584,47 @@ sitesRouter.post('/:id/deploy', async (req, res, next) => {
       return;
     }
 
-    const force = Boolean((req.body as { force?: unknown } | undefined)?.force);
-    const check = await buildDeployCheck(site);
+    const body = (req.body ?? {}) as {
+      branch?: unknown;
+      commit?: unknown;
+      force?: unknown;
+    };
+    const branch =
+      typeof body.branch === 'string' && body.branch.trim()
+        ? body.branch.trim()
+        : site.branch;
+    const requestedCommit =
+      typeof body.commit === 'string' && body.commit.trim()
+        ? body.commit.trim()
+        : null;
+    const force = Boolean(body.force);
+
+    const check = await buildDeployCheck(site, {
+      branch,
+      commit: requestedCommit ?? undefined,
+    });
+
+    if (!check.branchFound) {
+      res.status(409).json({
+        error: `Branch "${branch}" was not found on the remote.`,
+        code: 'BRANCH_NOT_FOUND',
+        check,
+      });
+      return;
+    }
+    if (requestedCommit && !check.commitFound) {
+      res.status(409).json({
+        error: `Commit "${requestedCommit}" was not found in the repository.`,
+        code: 'COMMIT_NOT_FOUND',
+        check,
+      });
+      return;
+    }
     if (check.wouldRedeploy && !force) {
       res.status(409).json({
         error:
-          `Branch "${site.branch}" and commit ` +
-          `${check.remoteSha?.slice(0, 7) ?? ''} are already live. ` +
+          `Branch "${branch}" and commit ` +
+          `${(check.deployCommit ?? '').slice(0, 7)} are already live. ` +
           'Tick Force deploy to redeploy them anyway.',
         code: 'ALREADY_LIVE',
         check,
@@ -502,7 +633,10 @@ sitesRouter.post('/:id/deploy', async (req, res, next) => {
     }
 
     const deploymentId = enqueueDeployment(site.id, requireUser(req).username, {
-      branch: site.branch,
+      branch,
+      // Only pin a commit when one was explicitly requested; otherwise the
+      // runner resolves the branch tip itself.
+      commit: requestedCommit ? check.deployCommit : null,
       redeploy: check.wouldRedeploy,
     });
     res.status(202).json({ deploymentId });
