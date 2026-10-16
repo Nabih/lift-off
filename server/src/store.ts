@@ -133,13 +133,33 @@ export function listDeployments(options: {
     .all(limit) as unknown as DeploymentRow[];
 }
 
-export function listDeploymentsWithSiteName(options: {
+export interface DeploymentListOptions {
   siteId?: string;
-  limit?: number;
   /** When set, only deployments for these sites are returned. */
   restrictSiteIds?: string[];
-}): Array<DeploymentRow & { site_name: string; site_repo_url: string | null }> {
-  const limit = options.limit ?? 50;
+  /** Case-insensitive substring match on the site name. */
+  search?: string;
+  /** Exact match on the username that triggered the deployment. */
+  triggeredBy?: string;
+  /** Column to order by. Defaults to the queue time. */
+  orderBy?: 'site' | 'user' | 'time';
+  order?: 'asc' | 'desc';
+  limit?: number;
+  offset?: number;
+}
+
+/** Whitelisted ORDER BY targets, so a request can never inject SQL. */
+const ORDER_COLUMNS = {
+  site: 's.name COLLATE NOCASE',
+  user: "COALESCE(d.triggered_by, '')",
+  time: 'd.queued_at',
+} as const;
+
+export function listDeploymentsWithSiteName(
+  options: DeploymentListOptions = {},
+): Array<DeploymentRow & { site_name: string; site_repo_url: string | null }> {
+  const limit = Math.min(200, Math.max(1, Math.trunc(options.limit ?? 50)));
+  const offset = Math.max(0, Math.trunc(options.offset ?? 0));
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -155,15 +175,93 @@ export function listDeploymentsWithSiteName(options: {
     params.push(...options.restrictSiteIds);
   }
 
+  if (options.search?.trim()) {
+    conditions.push('s.name LIKE ? COLLATE NOCASE');
+    params.push(`%${options.search.trim()}%`);
+  }
+
+  if (options.triggeredBy?.trim()) {
+    conditions.push('d.triggered_by = ?');
+    params.push(options.triggeredBy.trim());
+  }
+
+  const column = ORDER_COLUMNS[options.orderBy ?? 'time'];
+  const direction = options.order === 'asc' ? 'ASC' : 'DESC';
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
   return db
     .prepare(
       `SELECT d.*, s.name AS site_name, s.repo_url AS site_repo_url FROM deployments d
        LEFT JOIN sites s ON s.id = d.site_id
        ${where}
-       ORDER BY d.queued_at DESC LIMIT ?`,
+       ORDER BY ${column} ${direction}, d.id ${direction}
+       LIMIT ? OFFSET ?`,
     )
-    .all(...params, limit) as unknown as Array<DeploymentRow & { site_name: string; site_repo_url: string | null }>;
+    .all(...params, limit, offset) as unknown as Array<
+    DeploymentRow & { site_name: string; site_repo_url: string | null }
+  >;
+}
+
+/** Total row count for the same filters, for pagination. */
+export function countDeploymentsWithSiteName(
+  options: DeploymentListOptions = {},
+): number {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (options.siteId) {
+    conditions.push('d.site_id = ?');
+    params.push(options.siteId);
+  }
+
+  if (options.restrictSiteIds) {
+    if (options.restrictSiteIds.length === 0) return 0;
+    const placeholders = options.restrictSiteIds.map(() => '?').join(',');
+    conditions.push(`d.site_id IN (${placeholders})`);
+    params.push(...options.restrictSiteIds);
+  }
+
+  if (options.search?.trim()) {
+    conditions.push('s.name LIKE ? COLLATE NOCASE');
+    params.push(`%${options.search.trim()}%`);
+  }
+
+  if (options.triggeredBy?.trim()) {
+    conditions.push('d.triggered_by = ?');
+    params.push(options.triggeredBy.trim());
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM deployments d
+       LEFT JOIN sites s ON s.id = d.site_id
+       ${where}`,
+    )
+    .get(...params) as unknown as { count: number };
+  return Number(row?.count ?? 0);
+}
+
+/** Distinct usernames that have triggered a deployment, for the user filter. */
+export function deploymentTriggerUsers(siteId?: string): string[] {
+  const rows = (
+    siteId
+      ? db
+          .prepare(
+            `SELECT DISTINCT triggered_by FROM deployments
+             WHERE triggered_by IS NOT NULL AND site_id = ?
+             ORDER BY triggered_by COLLATE NOCASE`,
+          )
+          .all(siteId)
+      : db
+          .prepare(
+            `SELECT DISTINCT triggered_by FROM deployments
+             WHERE triggered_by IS NOT NULL
+             ORDER BY triggered_by COLLATE NOCASE`,
+          )
+          .all()
+  ) as unknown as Array<{ triggered_by: string }>;
+  return rows.map((row) => row.triggered_by).filter(Boolean);
 }
 
 export function insertDeployment(row: DeploymentRow): void {

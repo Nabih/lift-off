@@ -24,7 +24,7 @@ export default function SitesPage() {
       try {
         const [siteResult, deploymentResult] = await Promise.all([
           api.listSites(),
-          api.listDeployments(undefined, 200),
+          api.listDeployments({ limit: 200 }),
         ]);
         if (cancelled) return;
 

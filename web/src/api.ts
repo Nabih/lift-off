@@ -4,6 +4,7 @@ import type {
   ConnectionTest,
   DeployCheck,
   Deployment,
+  DeploymentList,
   LogLine,
   MailSettings,
   Release,
@@ -190,11 +191,24 @@ export const api = {
     request<{ releases: Release[] }>(`/api/sites/${id}/releases`),
 
   // ---- deployments ------------------------------------------------------
-  listDeployments: (siteId?: string, limit = 50) => {
+  listDeployments: (options: {
+    siteId?: string;
+    search?: string;
+    user?: string;
+    orderBy?: 'site' | 'user' | 'time';
+    order?: 'asc' | 'desc';
+    page?: number;
+    limit?: number;
+  } = {}) => {
     const params = new URLSearchParams();
-    if (siteId) params.set('siteId', siteId);
-    params.set('limit', String(limit));
-    return request<{ deployments: Deployment[] }>(
+    if (options.siteId) params.set('siteId', options.siteId);
+    if (options.search) params.set('search', options.search);
+    if (options.user) params.set('user', options.user);
+    if (options.orderBy) params.set('orderBy', options.orderBy);
+    if (options.order) params.set('order', options.order);
+    if (options.page) params.set('page', String(options.page));
+    params.set('limit', String(options.limit ?? 10));
+    return request<DeploymentList>(
       `/api/deployments?${params.toString()}`,
     );
   },

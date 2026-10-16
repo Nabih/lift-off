@@ -188,3 +188,15 @@ export interface MailSettings {
   hasPassword: boolean;
   configured: boolean;
 }
+
+/** Paginated deployment list with the filter options echoed back. */
+export interface DeploymentList {
+  deployments: Deployment[];
+  /** Total rows matching the current filters. */
+  total: number;
+  page: number;
+  perPage: number;
+  pages: number;
+  /** Usernames that have triggered a deployment, for the user filter. */
+  users: string[];
+}

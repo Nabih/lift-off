@@ -36,25 +36,33 @@ function loadDeploymentForRequest(
 
 deploymentsRouter.get('/', (req, res) => {
   const user = requireUser(req);
-  const siteId =
-    typeof req.query.siteId === 'string' && req.query.siteId
-      ? req.query.siteId
-      : undefined;
-  const requested = Number(req.query.limit ?? 50);
-  const limit = Number.isFinite(requested)
-    ? Math.min(200, Math.max(1, Math.trunc(requested)))
-    : 50;
+  const str = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() ? value.trim() : undefined;
+
+  const options: store.DeploymentListOptions = {
+    siteId: str(req.query.siteId),
+    search: str(req.query.search),
+    triggeredBy: str(req.query.user),
+    orderBy:
+      req.query.orderBy === 'site' || req.query.orderBy === 'user'
+        ? req.query.orderBy
+        : 'time',
+    order: req.query.order === 'asc' ? 'asc' : 'desc',
+  };
+
+  const page = Math.max(1, Number(req.query.page ?? 1) || 1);
+  const perPage = Math.min(100, Math.max(1, Number(req.query.limit ?? 10) || 10));
+  options.limit = perPage;
+  options.offset = (page - 1) * perPage;
 
   // Deployers only ever see deployments for their assigned sites. Combined with
   // the siteId filter, passing someone else's site id simply yields nothing.
-  const restrictSiteIds =
-    user.role === 'admin' ? undefined : store.assignedSiteIds(user.id);
+  if (user.role !== 'admin') {
+    options.restrictSiteIds = store.assignedSiteIds(user.id);
+  }
 
-  const rows = store.listDeploymentsWithSiteName({
-    siteId,
-    limit,
-    restrictSiteIds,
-  });
+  const total = store.countDeploymentsWithSiteName(options);
+  const rows = store.listDeploymentsWithSiteName(options);
 
   res.json({
     deployments: rows.map((row) => ({
@@ -62,6 +70,11 @@ deploymentsRouter.get('/', (req, res) => {
       siteName: row.site_name,
       repoUrl: row.site_repo_url,
     })),
+    total,
+    page,
+    perPage,
+    pages: Math.max(1, Math.ceil(total / perPage)),
+    users: store.deploymentTriggerUsers(options.siteId),
   });
 });
 

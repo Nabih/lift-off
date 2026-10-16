@@ -35,7 +35,7 @@ export default function SiteDetailPage() {
     setSite(loaded);
 
     const [deploymentResult, releaseResult] = await Promise.all([
-      api.listDeployments(id, 20),
+      api.listDeployments({ siteId: id, limit: 10 }),
       loaded.deployStrategy === 'releases'
         ? api.listReleases(id).catch(() => ({ releases: [] as Release[] }))
         : Promise.resolve({ releases: [] as Release[] }),
@@ -346,7 +346,7 @@ export default function SiteDetailPage() {
           <div className="row">
             <h2>Recent deployments</h2>
             <span className="spacer" />
-            <Link className="btn ghost small" to="/deployments">
+            <Link className="btn ghost small" to={`/deployments?site=${id}`}>
               View all
             </Link>
           </div>

@@ -1064,3 +1064,26 @@ a.branch-ref:hover {
   color: var(--text);
   letter-spacing: 0.1px;
 }
+
+/* --------------------------------------------------- filters & pagination */
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.filters .field {
+  margin-bottom: 0;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.pager .spacer {
+  flex: 1;
+}
