@@ -81,12 +81,25 @@ export function buildGitEnv(site: GitAuth): NodeJS.ProcessEnv {
       `x-access-token:${decrypt(site.access_token)}`,
     ).toString('base64');
 
-    // Append rather than clobber, in case the caller's environment sets these.
     const index = Number.parseInt(env.GIT_CONFIG_COUNT ?? '0', 10) || 0;
     env.GIT_CONFIG_COUNT = String(index + 1);
     env[`GIT_CONFIG_KEY_${index}`] = 'http.extraHeader';
     env[`GIT_CONFIG_VALUE_${index}`] = `Authorization: Basic ${basic}`;
   }
+
+  // Never inherit a credential helper (e.g. macOS osxkeychain) from the
+  // operator's global git config. "None" auth must reach the remote
+  // anonymously, and explicit auth must not be shadowed by cached creds.
+  {
+    const index = Number.parseInt(env.GIT_CONFIG_COUNT ?? '0', 10) || 0;
+    env.GIT_CONFIG_COUNT = String(index + 1);
+    env[`GIT_CONFIG_KEY_${index}`] = 'credential.helper';
+    env[`GIT_CONFIG_VALUE_${index}`] = '';
+  }
+
+  // Skip the system-level config file too, so host config cannot inject a
+  // credential helper or override of our own.
+  env.GIT_CONFIG_NOSYSTEM = '1';
 
   return env;
 }
