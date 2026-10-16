@@ -64,9 +64,14 @@ export default function SitesPage() {
           </p>
         </div>
         {isAdmin && (
-          <Link className="btn primary" to="/sites/new">
-            New site
-          </Link>
+          <>
+            <Link className="btn ghost" to="/sites/archived">
+              Archived sites
+            </Link>
+            <Link className="btn primary" to="/sites/new">
+              New site
+            </Link>
+          </>
         )}
       </header>
 

@@ -100,11 +100,6 @@ export default function SiteDetailPage() {
         </div>
         <div className="header-actions">
           {isAdmin && (
-            <Link className="btn ghost" to="/sites/archived">
-              Archived sites
-            </Link>
-          )}
-          {isAdmin && (
             <Link className="btn ghost" to={`/sites/${site.id}/edit`}>
               Edit
             </Link>
@@ -114,12 +109,13 @@ export default function SiteDetailPage() {
               className="btn ghost"
               type="button"
               disabled={releases.length < 2 || busy !== null}
-              onClick={() =>
+              onClick={() => {
+                if (!window.confirm('Roll back to the previous release?')) return;
                 void run('rollback', async () => {
                   const { deploymentId } = await api.rollbackSite(site.id);
                   navigate(`/deployments/${deploymentId}`);
-                })
-              }
+                });
+              }}
             >
               Roll back
             </button>
@@ -287,15 +283,16 @@ export default function SiteDetailPage() {
                       type="button"
                       className="btn ghost small"
                       disabled={busy !== null}
-                      onClick={() =>
+                      onClick={() => {
+                        if (!window.confirm(`Roll back to "${release.name}"?`)) return;
                         void run('rollback', async () => {
                           const { deploymentId } = await api.rollbackToRelease(
                             site.id,
                             release.name,
                           );
                           navigate(`/deployments/${deploymentId}`);
-                        })
-                      }
+                        });
+                      }}
                     >
                       Roll back to this
                     </button>
