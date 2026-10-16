@@ -938,7 +938,8 @@ a.branch-ref:hover {
   text-decoration: none;
 }
 
-.redeploy-ref {
+.redeploy-ref,
+.rollback-ref {
   display: inline-flex;
   align-items: center;
   padding: 1px 7px;
@@ -949,6 +950,12 @@ a.branch-ref:hover {
   color: var(--warning);
   background: rgba(227, 179, 65, 0.1);
   white-space: nowrap;
+}
+
+.rollback-ref {
+  border-color: rgba(255, 150, 60, 0.5);
+  color: #ff963c;
+  background: rgba(255, 150, 60, 0.12);
 }
 
 /* ---------------------------------------------------------------- modal */

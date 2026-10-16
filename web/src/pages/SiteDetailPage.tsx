@@ -370,9 +370,6 @@ export default function SiteDetailPage() {
                   <tr key={deployment.id}>
                     <td>
                       <StatusBadge status={deployment.status} />
-                      {deployment.kind === 'rollback' && (
-                        <span className="badge muted">rollback</span>
-                      )}
                     </td>
                     <td className="small">
                       <CommitRef deployment={deployment} />

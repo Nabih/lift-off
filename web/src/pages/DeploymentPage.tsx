@@ -69,9 +69,6 @@ export default function DeploymentPage() {
           <div className="title-row">
             <h1>Deployment</h1>
             <StatusBadge status={deployment.status} />
-            {deployment.kind === 'rollback' && (
-              <span className="badge muted">rollback</span>
-            )}
           </div>
           <p className="muted small">
             <Link className="link" to={`/sites/${deployment.siteId}`}>

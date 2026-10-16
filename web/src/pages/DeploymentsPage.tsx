@@ -277,9 +277,6 @@ export default function DeploymentsPage() {
                       <Link className="link" to={`/sites/${deployment.siteId}`}>
                         {deployment.siteName ?? deployment.siteId}
                       </Link>
-                      {deployment.kind === 'rollback' && (
-                        <span className="badge muted">rollback</span>
-                      )}
                     </td>
                     <td className="small">
                       <CommitRef deployment={deployment} messageLength={40} />
