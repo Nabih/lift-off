@@ -202,7 +202,12 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
           (result.branches.includes('master') && 'master') ||
           result.branches[0] ||
           '';
-        if (preferred) setForm((previous) => ({ ...previous, branch: preferred }));
+        if (preferred) {
+          setForm((previous) => ({ ...previous, branch: preferred }));
+          // Re-validate the new branch so branch-found/message/package.json match.
+          void validateConnection(preferred);
+          return;
+        }
       }
     } catch (err) {
       if (requestId !== validateRequest.current) return;
@@ -599,6 +604,14 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                 >
                   {validation.message}
                 </div>
+              )}
+
+              {validation && validation.ok && !pkg && (
+                <p className="muted small">
+                  No <code>package.json</code> at the root of this branch
+                  (non-Node project, or the build lives in a subfolder). Set the
+                  install/build commands yourself.
+                </p>
               )}
 
               {pkg && (
