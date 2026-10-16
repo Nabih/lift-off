@@ -15,7 +15,6 @@ export default function SitesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deployTarget, setDeployTarget] = useState<Site | null>(null);
-  const [archivedSites, setArchivedSites] = useState<Site[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,15 +28,6 @@ export default function SitesPage() {
         if (cancelled) return;
 
         setSites(siteResult.sites);
-
-        if (isAdmin && !cancelled) {
-          try {
-            const del = await api.listSites({ deleted: true });
-            if (!cancelled) setArchivedSites(del.sites);
-          } catch {
-            // Non-fatal; listing still works.
-          }
-        }
         const bySite: Record<string, Deployment> = {};
         for (const deployment of deploymentResult.deployments) {
           if (!bySite[deployment.siteId]) bySite[deployment.siteId] = deployment;
@@ -62,7 +52,6 @@ export default function SitesPage() {
     if (!window.confirm(`Unarchive "${site.name}"?`)) return;
     await api.restoreSite(site.id);
     setSites((prev) => [...prev, site].sort((a, b) => a.name.localeCompare(b.name)));
-    setArchivedSites((prev) => prev.filter((s) => s.id !== site.id));
   }
 
   return (
@@ -157,42 +146,6 @@ export default function SitesPage() {
             );
           })}
         </div>
-      )}
-
-      {isAdmin && archivedSites.length > 0 && (
-        <section className="card">
-          <h2>Archived sites</h2>
-          <p className="muted small">
-            Only administrators see these. Archiving keeps a site’s configuration
-            and workspace, so it can be unarchived later with nothing lost.
-          </p>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Branch</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {archivedSites.map((site) => (
-                <tr key={site.id}>
-                  <td className="site-name">{site.name}</td>
-                  <td className="mono small">{site.branch}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn primary small"
-                      onClick={() => void restore(site)}
-                    >
-                      Unarchive
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
       )}
 
       {deployTarget && (

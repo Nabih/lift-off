@@ -36,10 +36,24 @@ export function getSite(id: string): SiteRow | null {
 }
 
 /** Looks up a site by name (case-insensitive) for duplicate-name detection. */
-export function getSiteByName(name: string): SiteRow | null {
-  const row = db
-    .prepare('SELECT * FROM sites WHERE name = ? COLLATE NOCASE')
-    .get(name.trim());
+export function getSiteByName(name: string, excludeId?: string): SiteRow | null {
+  const sql = excludeId
+    ? 'SELECT * FROM sites WHERE name = ? COLLATE NOCASE AND id <> ? AND deleted_at IS NULL'
+    : 'SELECT * FROM sites WHERE name = ? COLLATE NOCASE AND deleted_at IS NULL';
+  const row = excludeId
+    ? db.prepare(sql).get(name.trim(), excludeId)
+    : db.prepare(sql).get(name.trim());
+  return (row as unknown as SiteRow) ?? null;
+}
+
+export function getSiteByTargetDir(targetDir: string, excludeId?: string): SiteRow | null {
+  if (!targetDir.trim()) return null;
+  const sql = excludeId
+    ? 'SELECT * FROM sites WHERE target_dir = ? AND id <> ? AND deleted_at IS NULL'
+    : 'SELECT * FROM sites WHERE target_dir = ? AND deleted_at IS NULL';
+  const row = excludeId
+    ? db.prepare(sql).get(targetDir.trim(), excludeId)
+    : db.prepare(sql).get(targetDir.trim());
   return (row as unknown as SiteRow) ?? null;
 }
 

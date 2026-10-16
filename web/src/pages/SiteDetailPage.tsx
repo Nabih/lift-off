@@ -100,6 +100,11 @@ export default function SiteDetailPage() {
         </div>
         <div className="header-actions">
           {isAdmin && (
+            <Link className="btn ghost" to="/sites/archived">
+              Archived sites
+            </Link>
+          )}
+          {isAdmin && (
             <Link className="btn ghost" to={`/sites/${site.id}/edit`}>
               Edit
             </Link>

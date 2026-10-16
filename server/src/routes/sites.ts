@@ -191,6 +191,11 @@ sitesRouter.post('/', async (req, res, next) => {
       res.status(409).json({ error: `A site named "${data.name}" already exists.` });
       return;
     }
+    const targetClash = store.getSiteByTargetDir(data.targetDir || '');
+    if (targetClash) {
+      res.status(409).json({ error: `Target directory "${data.targetDir}" is already used by "${targetClash.name}".` });
+      return;
+    }
 
     // SSH sites get a keypair: either from a key the admin pasted, or generated.
     // A pasted key plus its derived public half are stored encrypted; this lets
@@ -261,9 +266,16 @@ sitesRouter.patch('/:id', async (req, res, next) => {
     const data = parsed.data;
 
     if (data.name !== undefined) {
-      const nameClash = store.getSiteByName(data.name);
-      if (nameClash && nameClash.id !== existing.id) {
+      const nameClash = store.getSiteByName(data.name, existing.id);
+      if (nameClash) {
         res.status(409).json({ error: `A site named "${data.name}" already exists.` });
+        return;
+      }
+    }
+    if (data.targetDir !== undefined && data.targetDir.trim() !== '') {
+      const targetClash = store.getSiteByTargetDir(data.targetDir, existing.id);
+      if (targetClash) {
+        res.status(409).json({ error: `Target directory "${data.targetDir}" is already used by "${targetClash.name}".` });
         return;
       }
     }
@@ -369,6 +381,16 @@ sitesRouter.post('/:id/restore', async (req, res, next) => {
     }
     if (!site.deleted_at) {
       res.status(409).json({ error: 'This site is not archived.' });
+      return;
+    }
+    const nameClash = store.getSiteByName(site.name);
+    if (nameClash) {
+      res.status(409).json({ error: `Cannot restore: a site named "${site.name}" already exists.` });
+      return;
+    }
+    const targetClash = store.getSiteByTargetDir(site.target_dir || '');
+    if (targetClash) {
+      res.status(409).json({ error: `Cannot restore: target directory is already used by "${targetClash.name}".` });
       return;
     }
     store.updateSite(site.id, {

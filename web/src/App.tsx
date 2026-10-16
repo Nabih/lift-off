@@ -10,6 +10,7 @@ import LoginPage from './pages/LoginPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import SettingsPage from './pages/SettingsPage';
 import SetupPage from './pages/SetupPage';
+import ArchivedSitesPage from './pages/ArchivedSitesPage';
 import SiteDetailPage from './pages/SiteDetailPage';
 import SiteFormPage from './pages/SiteFormPage';
 import SitesPage from './pages/SitesPage';
@@ -90,6 +91,15 @@ export default function App() {
               }
             />
             <Route path="/sites/:id" element={<SiteDetailPage />} />
+
+          <Route
+            path="/sites/archived"
+            element={
+              <RequireAdmin>
+                <ArchivedSitesPage />
+              </RequireAdmin>
+            }
+          />
 
             <Route
               path="/users"
