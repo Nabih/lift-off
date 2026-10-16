@@ -67,6 +67,7 @@ export interface SiteRow {
   keep_releases: number;
   env_vars: string;
   enabled: number;
+  draft: number;
   created_at: string;
   updated_at: string;
 }
@@ -89,6 +90,7 @@ export interface SiteDTO {
   keepReleases: number;
   envVars: Record<string, string>;
   enabled: boolean;
+  draft: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -157,6 +159,7 @@ export function toSiteDTO(row: SiteRow): SiteDTO {
     keepReleases: row.keep_releases,
     envVars: safeJsonObject(row.env_vars),
     enabled: Boolean(row.enabled),
+    draft: Boolean(row.draft),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

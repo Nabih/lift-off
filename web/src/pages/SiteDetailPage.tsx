@@ -95,6 +95,7 @@ export default function SiteDetailPage() {
         <div className="title-row">
           <h1>{site.name}</h1>
           {!site.enabled && <span className="badge muted">disabled</span>}
+          {site.draft && <span className="badge draft">draft</span>}
         </div>
         <div className="header-actions">
           {isAdmin && (
@@ -120,7 +121,7 @@ export default function SiteDetailPage() {
           <button
             className="btn primary"
             type="button"
-            disabled={!site.enabled || busy !== null}
+            disabled={!site.enabled || busy !== null || site.draft}
             onClick={() => void openDeployDialog()}
           >
             Deploy now

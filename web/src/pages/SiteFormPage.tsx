@@ -26,6 +26,7 @@ const DEFAULTS: SiteInput = {
   keepReleases: 5,
   envVars: {},
   enabled: true,
+  draft: false,
 };
 
 /** Small refresh glyph for the "reload branches" button. */
@@ -134,6 +135,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
           keepReleases: site.keepReleases,
           envVars: site.envVars,
           enabled: site.enabled,
+          draft: site.draft,
         });
         setHasAccessToken(site.hasAccessToken);
         setHasSshKey(site.sshPublicKey !== null);
@@ -315,7 +317,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
               <input
                 className="input mono"
                 value={form.repoUrl}
-                required
+                required={!form.draft}
                 placeholder={
                   form.authType === 'token'
                     ? 'https://github.com/owner/repo.git'
@@ -426,7 +428,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                   type="password"
                   autoComplete="off"
                   value={form.accessToken ?? ''}
-                  required={!hasAccessToken}
+                  required={form.authType === 'token' && !form.draft && !hasAccessToken}
                   placeholder={
                     hasAccessToken
                       ? '•••••••• (leave blank to keep the current token)'
@@ -504,7 +506,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                   <select
                     className="input mono"
                     value={form.branch}
-                    required
+                    required={!form.draft}
                     onChange={(event) => onBranchPicked(event.target.value)}
                   >
                     {!repoBranches.includes(form.branch) && (
@@ -522,7 +524,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                   <input
                     className="input mono"
                     value={form.branch}
-                    required
+                    required={!form.draft}
                     placeholder="master"
                     onChange={(event) => set('branch', event.target.value)}
                   />
@@ -577,7 +579,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
               <input
                 className="input mono"
                 value={form.distDir}
-                required
+                required={!form.draft}
                 placeholder="dist"
                 onChange={(event) => set('distDir', event.target.value)}
               />
@@ -606,7 +608,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
               <input
                 className="input mono"
                 value={form.targetDir}
-                required
+                required={!form.draft}
                 placeholder="/var/www/my-site"
                 onChange={(event) => set('targetDir', event.target.value)}
               />

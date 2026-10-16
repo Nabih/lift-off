@@ -48,6 +48,7 @@ db.exec(`
     keep_releases     INTEGER NOT NULL DEFAULT 5,
     env_vars          TEXT NOT NULL DEFAULT '{}',
     enabled           INTEGER NOT NULL DEFAULT 1,
+    draft             INTEGER NOT NULL DEFAULT 0,
     created_at        TEXT NOT NULL,
     updated_at        TEXT NOT NULL
   );
@@ -143,6 +144,7 @@ ensureColumn('users', 'session_version', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('deployments', 'branch', 'TEXT');
 ensureColumn('deployments', 'redeploy', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('deployments', 'release_name', 'TEXT');
+ensureColumn('sites', 'draft', 'INTEGER NOT NULL DEFAULT 0');
 
 // Created after the migration above, since it references users(email).
 db.exec(`

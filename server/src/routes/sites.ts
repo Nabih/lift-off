@@ -27,8 +27,8 @@ export const sitesRouter = Router();
 
 const siteSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.').max(120),
-  repoUrl: z.string().trim().min(1, 'Repository URL is required.').max(500),
-  branch: z.string().trim().min(1, 'Branch is required.').max(200).default('master'),
+  repoUrl: z.string().trim().max(500).default(''),
+  branch: z.string().trim().max(200).default('master'),
   authType: z.enum(['ssh', 'token', 'none']).default('ssh'),
   /** Personal access token for `authType: 'token'`. Blank on update keeps the stored one. */
   accessToken: z.string().trim().max(500).optional(),
@@ -36,12 +36,13 @@ const siteSchema = z.object({
   sshPrivateKey: z.string().trim().max(20000).optional().refine((v) => !v || v.length >= 20, { message: 'SSH key too short (at least 20 characters).' }).transform((v) => (v && v.length ? v : undefined)),
   installCommand: z.string().max(2000).default('npm ci'),
   buildCommand: z.string().max(2000).default('npm run build'),
-  distDir: z.string().trim().min(1, 'Output directory is required.').max(500).default('dist'),
-  targetDir: z.string().trim().min(1, 'Target directory is required.').max(1000),
+  distDir: z.string().trim().max(500).default('dist'),
+  targetDir: z.string().trim().max(1000).default(''),
   deployStrategy: z.enum(['releases', 'direct']).default('releases'),
   keepReleases: z.coerce.number().int().min(1).max(50).default(5),
   envVars: z.record(z.string()).default({}),
   enabled: z.boolean().default(true),
+  draft: z.boolean().default(false),
 });
 
 const SSH_URL = /^(?:ssh:\/\/)?[^\s@/]+@[^\s:/]+:[^\s]+$/;
@@ -172,13 +173,15 @@ sitesRouter.post('/', async (req, res, next) => {
     }
     const data = parsed.data;
 
-    const problem = validateSiteConfig({
-      ...data,
-      hasAccessToken: Boolean(data.accessToken),
-    });
-    if (problem) {
-      res.status(400).json({ error: problem });
-      return;
+    if (!data.draft) {
+      const problem = validateSiteConfig({
+        ...data,
+        hasAccessToken: Boolean(data.accessToken),
+      });
+      if (problem) {
+        res.status(400).json({ error: problem });
+        return;
+      }
     }
 
     // SSH sites get a keypair: either from a key the admin pasted, or generated.
@@ -216,6 +219,7 @@ sitesRouter.post('/', async (req, res, next) => {
       keep_releases: data.keepReleases,
       env_vars: JSON.stringify(data.envVars),
       enabled: data.enabled ? 1 : 0,
+      draft: data.draft ? 1 : 0,
       created_at: now,
       updated_at: now,
     };
@@ -248,18 +252,23 @@ sitesRouter.patch('/:id', async (req, res, next) => {
     const data = parsed.data;
 
     // Validate the *merged* result so partial updates cannot create an invalid
-    // combination (e.g. switching auth type without changing the URL).
+    // combination (e.g. switching auth type without changing the URL). Drafts are
+    // allowed to stay incomplete; publishing (draft=false) must still validate.
     const current = toSiteDTO(existing);
-    const problem = validateSiteConfig({
-      repoUrl: data.repoUrl ?? current.repoUrl,
-      authType: data.authType ?? current.authType,
-      hasAccessToken: data.accessToken ? true : current.hasAccessToken,
-      distDir: data.distDir ?? current.distDir,
-      targetDir: data.targetDir ?? current.targetDir,
-    });
-    if (problem) {
-      res.status(400).json({ error: problem });
-      return;
+    const stayingDraft =
+      data.draft === true || (data.draft === undefined && Boolean(existing.draft));
+    if (!stayingDraft) {
+      const problem = validateSiteConfig({
+        repoUrl: data.repoUrl ?? current.repoUrl,
+        authType: data.authType ?? current.authType,
+        hasAccessToken: data.accessToken ? true : current.hasAccessToken,
+        distDir: data.distDir ?? current.distDir,
+        targetDir: data.targetDir ?? current.targetDir,
+      });
+      if (problem) {
+        res.status(400).json({ error: problem });
+        return;
+      }
     }
 
     const patch: Record<string, unknown> = {};
@@ -275,6 +284,7 @@ sitesRouter.patch('/:id', async (req, res, next) => {
     if (data.keepReleases !== undefined) patch.keep_releases = data.keepReleases;
     if (data.envVars !== undefined) patch.env_vars = JSON.stringify(data.envVars);
     if (data.enabled !== undefined) patch.enabled = data.enabled ? 1 : 0;
+    if (data.draft !== undefined) patch.draft = data.draft ? 1 : 0;
 
     // Blank means "leave the stored token alone", so the UI can submit the form
     // without ever holding the secret.
@@ -390,7 +400,7 @@ sitesRouter.post('/:id/test', async (req, res, next) => {
 const validateSchema = z.object({
   siteId: z.string().trim().optional(),
   repoUrl: z.string().trim().min(1, 'Repository URL is required.').max(500),
-  branch: z.string().trim().min(1, 'Branch is required.').max(200).default('master'),
+  branch: z.string().trim().max(200).default('master'),
   authType: z.enum(['ssh', 'token', 'none']).default('ssh'),
   accessToken: z.string().trim().max(500).optional(),
   sshPrivateKey: z.string().trim().max(20000).optional().refine((v) => !v || v.length >= 20, { message: 'SSH key too short (at least 20 characters).' }).transform((v) => (v && v.length ? v : undefined)),
@@ -611,6 +621,10 @@ sitesRouter.post('/:id/deploy', async (req, res, next) => {
     if (!site) return;
     if (!site.enabled) {
       res.status(409).json({ error: 'This site is disabled.' });
+      return;
+    }
+    if (site.draft) {
+      res.status(409).json({ error: 'This site is a draft — finish and save its details before deploying.' });
       return;
     }
 

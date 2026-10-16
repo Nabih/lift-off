@@ -644,6 +644,12 @@ textarea.input {
   text-transform: none;
 }
 
+.badge.draft {
+  background: rgba(255, 183, 62, 0.14);
+  color: #ffb73e;
+  border-color: rgba(255, 183, 62, 0.35);
+}
+
 .badge-success {
   background: rgba(53, 198, 139, 0.13);
   color: var(--success);

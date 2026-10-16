@@ -93,6 +93,7 @@ export default function SitesPage() {
                     {site.name}
                   </Link>
                   {!site.enabled && <span className="badge muted">disabled</span>}
+                  {site.draft && <span className="badge draft">draft</span>}
                 </div>
 
                 <div className="mono small muted ellipsis" title={site.repoUrl}>
@@ -129,7 +130,7 @@ export default function SitesPage() {
                   <button
                     type="button"
                     className="btn primary small"
-                    disabled={!site.enabled}
+                    disabled={!site.enabled || site.draft}
                     onClick={() => setDeployTarget(site)}
                   >
                     Deploy

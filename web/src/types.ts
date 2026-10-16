@@ -55,6 +55,7 @@ export interface Site {
   keepReleases: number;
   envVars: Record<string, string>;
   enabled: boolean;
+  draft: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,6 +77,7 @@ export interface SiteInput {
   keepReleases: number;
   envVars: Record<string, string>;
   enabled: boolean;
+  draft: boolean;
 }
 
 export interface Deployment {
