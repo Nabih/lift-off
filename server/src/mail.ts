@@ -49,8 +49,6 @@ const KEYS = {
   notifyEnabled: 'mail_notify_enabled',
 } as const;
 
-/** Where deploy-finished notifications go until an admin changes it. */
-export const DEFAULT_NOTIFY_EMAIL = 'nabih@email.com';
 
 /**
  * Notifications are opt-in, but an install that already has a recipient
@@ -60,19 +58,20 @@ function resolveNotifyEnabled(): boolean {
   const stored = getSetting(KEYS.notifyEnabled);
   if (stored === 'true') return true;
   if (stored === 'false') return false;
-  const email = getSetting(KEYS.notifyEmail);
-  return Boolean(email && email !== DEFAULT_NOTIFY_EMAIL);
+  // Never configured: keep notifying if an install already had a recipient,
+  // so adding the toggle does not silently stop working deployments.
+  return Boolean(getSetting(KEYS.notifyEmail));
 }
 
 /**
  * Where deployment notifications go: the deployment address the user typed,
- * plus every enabled account's recovery email. Deduplicated, order preserved.
+ * plus every enabled account's email. Deduplicated, order preserved.
  */
 export function notificationRecipients(): string[] {
   const typed = (getSetting(KEYS.notifyEmail) ?? '')
     .split(',')
     .map((value) => value.trim().toLowerCase())
-    .filter((value) => value && value !== DEFAULT_NOTIFY_EMAIL);
+    .filter(Boolean);
 
   const recovery = listUsers()
     .filter((user) => !user.disabled && user.email)
@@ -109,7 +108,7 @@ export function getMailConfig(): MailConfig | null {
     pass: storedPassword ? decrypt(storedPassword) : '',
     from,
     notifyEnabled: resolveNotifyEnabled(),
-    notifyEmail: getSetting(KEYS.notifyEmail) ?? DEFAULT_NOTIFY_EMAIL,
+    notifyEmail: getSetting(KEYS.notifyEmail) ?? '',
   };
 }
 
@@ -125,7 +124,7 @@ export function mailSettingsForUI(): MailSettingsDTO {
     secure: getSetting(KEYS.secure) === 'true',
     user: getSetting(KEYS.user) ?? '',
     from: getSetting(KEYS.from) ?? '',
-    notifyEmail: getSetting(KEYS.notifyEmail) ?? DEFAULT_NOTIFY_EMAIL,
+    notifyEmail: getSetting(KEYS.notifyEmail) ?? '',
     notifyEnabled: resolveNotifyEnabled(),
     hasPassword: Boolean(getSetting(KEYS.pass)),
     configured: isMailConfigured(),
@@ -156,11 +155,9 @@ export function saveMailSettings(input: MailSettingsInput): void {
   if (input.notifyEnabled !== undefined) {
     setSetting(KEYS.notifyEnabled, input.notifyEnabled ? 'true' : 'false');
   }
-  const notify = (input.notifyEmail ?? '').trim();
-  setSetting(
-    KEYS.notifyEmail,
-    notify && notify !== DEFAULT_NOTIFY_EMAIL ? notify : DEFAULT_NOTIFY_EMAIL,
-  );
+  // Blank is allowed: the deployment email is optional, and notifications then
+  // go only to the account emails.
+  setSetting(KEYS.notifyEmail, (input.notifyEmail ?? '').trim());
   if (input.pass !== undefined && input.pass !== '') {
     setSetting(KEYS.pass, encrypt(input.pass));
   }
@@ -339,7 +336,7 @@ export async function sendDeploymentFinishedEmail(
   const to = notificationRecipients();
   if (to.length === 0) {
     throw new Error(
-      'No recipients: set a deployment email or add a recovery email.',
+      'No recipients: set a deployment email or add an account email.',
     );
   }
   await send(config, { to: to.join(', '), subject, text, html });

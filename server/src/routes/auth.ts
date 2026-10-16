@@ -169,7 +169,7 @@ authRouter.post('/password', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-/** Sets or clears the signed-in user's own recovery email. */
+/** Sets or clears the signed-in user's own account email. */
 authRouter.patch('/email', requireAuth, (req, res) => {
   const user = requireUser(req);
 

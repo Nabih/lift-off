@@ -99,7 +99,7 @@ function RecoveryEmailCard({ onSaved }: { onSaved: () => Promise<void> }) {
     try {
       await api.setEmail(password, email);
       setPassword('');
-      setMessage('Recovery email saved.');
+      setMessage('Account email saved.');
       await onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the email address.');
@@ -110,7 +110,7 @@ function RecoveryEmailCard({ onSaved }: { onSaved: () => Promise<void> }) {
 
   return (
     <section className="card">
-      <h2>Recovery email</h2>
+      <h2>Account email</h2>
       <p className="muted small">
         Usernames are used to sign in; this address is only used to send a password
         reset link. It is never shown to anyone else.
@@ -295,7 +295,7 @@ function MailSettingsCard() {
     setForm((previous) => ({ ...previous, [key]: value }));
   }
 
-  // Deployment email + this account's recovery email. If neither exists there
+  // Deployment email + this account's email. If neither exists there
   // is nobody to notify, so warn before the user saves an empty setup.
   const hasAnyRecipient =
     Boolean(form.notifyEmail.trim()) || Boolean(user?.email);
@@ -444,12 +444,12 @@ function MailSettingsCard() {
               className="input"
               type="email"
               value={form.notifyEmail}
-              placeholder="defaults to your recovery email"
+              placeholder="Optional — defaults to your account email"
               onChange={(event) => set('notifyEmail', event.target.value)}
             />
             <small className="hint">
-              Sent to this address and to the recovery email of every account that
-              has one. Separate multiple addresses with commas.
+              Sent to this address and to the account email of every user that has
+              one. Separate multiple addresses with commas.
             </small>
           </label>
         )}

@@ -136,7 +136,7 @@ export default function UsersPage() {
                       {account.email ? (
                         <div className="muted small">{account.email}</div>
                       ) : (
-                        <div className="muted small">no recovery email</div>
+                        <div className="muted small">no account email</div>
                       )}
                     </td>
                     <td>
@@ -321,7 +321,7 @@ function UserForm({ existing, sites, onCancel, onSaved }: FormProps) {
       </div>
 
       <label className="field">
-        <span>Recovery email (optional)</span>
+        <span>Account email (optional)</span>
         <input
           className="input"
           type="email"
