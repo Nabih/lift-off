@@ -143,6 +143,8 @@ export interface DeploymentListOptions {
   triggeredBy?: string;
   /** regular = plain deploy, rollback = kind, redeploy = forced re-deployment. */
   type?: 'regular' | 'rollback' | 'redeploy';
+  /** One status, or a small set (e.g. any non-success). */
+  status?: string[];
   /** Column to order by. Defaults to the queue time. */
   orderBy?: 'site' | 'user' | 'time';
   order?: 'asc' | 'desc';
@@ -193,6 +195,11 @@ export function listDeploymentsWithSiteName(
     conditions.push('d.redeploy = 1');
   } else if (options.type === 'regular') {
     conditions.push("d.kind = 'deploy' AND d.redeploy = 0");
+  }
+
+  if (options.status?.length) {
+    conditions.push(`d.status IN (${options.status.map(() => '?').join(',')})`);
+    params.push(...options.status);
   }
 
   const column = ORDER_COLUMNS[options.orderBy ?? 'time'];
@@ -247,6 +254,11 @@ export function countDeploymentsWithSiteName(
     conditions.push('d.redeploy = 1');
   } else if (options.type === 'regular') {
     conditions.push("d.kind = 'deploy' AND d.redeploy = 0");
+  }
+
+  if (options.status?.length) {
+    conditions.push(`d.status IN (${options.status.map(() => '?').join(',')})`);
+    params.push(...options.status);
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

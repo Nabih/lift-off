@@ -45,6 +45,7 @@ export default function DeploymentsPage() {
     | 'regular'
     | 'rollback'
     | 'redeploy';
+  const status = searchParams.get('status') ?? '';
   const orderBy = (searchParams.get('orderBy') ?? 'time') as
     | 'site'
     | 'user'
@@ -90,6 +91,7 @@ export default function DeploymentsPage() {
         search: search || undefined,
         user: user || undefined,
         type: type || undefined,
+        status: status ? [status] : undefined,
         orderBy,
         order,
         page,
@@ -102,7 +104,7 @@ export default function DeploymentsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load deployments.');
     }
-  }, [siteId, search, user, type, orderBy, order, page]);
+  }, [siteId, search, user, type, status, orderBy, order, page]);
 
   // Fetch whenever the user changes a filter, the page, or the scoped site.
   useEffect(() => {
@@ -198,6 +200,22 @@ export default function DeploymentsPage() {
               <option value="regular">Regular</option>
               <option value="rollback">Rollback</option>
               <option value="redeploy">Redeployed</option>
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Status</span>
+            <select
+              className="input"
+              value={status}
+              onChange={(event) => setParam('status', event.target.value)}
+            >
+              <option value="">All statuses</option>
+              <option value="success">Success</option>
+              <option value="failed">Failed</option>
+              <option value="running">Running</option>
+              <option value="queued">Queued</option>
+              <option value="cancelled">Cancelled</option>
             </select>
           </label>
 

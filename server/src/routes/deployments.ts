@@ -14,6 +14,15 @@ export const deploymentsRouter = Router();
 
 const TERMINAL: ReadonlySet<string> = new Set(['success', 'failed', 'cancelled']);
 
+/** Statuses the list endpoint will filter on; anything else is ignored. */
+const FILTERABLE_STATUSES: ReadonlySet<string> = new Set([
+  'queued',
+  'running',
+  'success',
+  'failed',
+  'cancelled',
+]);
+
 /**
  * Loads a deployment and checks the caller may see its site. Replies with an
  * error and returns null when access is denied.
@@ -55,6 +64,15 @@ deploymentsRouter.get('/', (req, res) => {
         : 'time',
     order: req.query.order === 'asc' ? 'asc' : 'desc',
   };
+
+  // ?status= accepts a comma-separated list of deployment statuses.
+  const status = typeof req.query.status === 'string'
+    ? req.query.status
+        .split(',')
+        .map((value) => value.trim().toLowerCase())
+        .filter((value) => FILTERABLE_STATUSES.has(value))
+    : [];
+  if (status.length > 0) options.status = status;
 
   const page = Math.max(1, Number(req.query.page ?? 1) || 1);
   const perPage = Math.min(100, Math.max(1, Number(req.query.limit ?? 10) || 10));
