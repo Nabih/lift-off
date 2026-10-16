@@ -16,7 +16,8 @@ verified end to end. Not yet deployed to the VPS.
 Rounds so far: (1) core deploy pipeline, (2) users/roles/owner, (3) PAT auth +
 email password reset, (4) form-time repository validation + script discovery,
 (5) renamed to **Lift-Off** and published publicly, (6) site-side access
-assignment + filtered assignment lists.
+assignment + filtered assignment lists, (7) branch dropdown from the validated
+repository.
 
 ---
 
@@ -138,8 +139,7 @@ button that shows status and, on success, lists runnable commands found in
   shows `npm run build` / `pnpm build` etc.; nothing from the repo is run here.
 
 **Deliberately not done yet** (the "improve on the idea" round): suggesting the
-install command from lockfiles, a branch picker from the returned branch list,
-and surfacing the scripts on the site detail page.
+install command from lockfiles, and surfacing the scripts on the site detail page.
 
 ### Round 5 — renamed to Lift-Off + published
 
@@ -195,6 +195,39 @@ filter. Added the other direction and a filter to both.
   pages; it also reports "N of M selected", which matters for a multi-select.
 - The site-scoped endpoint is admin-only like every other site mutation, even
   though Deployers can read their sites.
+
+### Round 7 — branch dropdown from the validated repository
+
+Adding a site meant typing the branch by hand, even though `validateRepo` had
+already been returning the remote's branch names since round 4 — the form simply
+threw them away. Now a successful **Validate connection** fills a branch
+dropdown, and the free-text box remains the fallback.
+
+| Question | Decision |
+| --- | --- |
+| Where branches come from | The existing `branches` array on the validation response — **no new request or endpoint** |
+| When to show the dropdown | Only when validation returned at least one branch |
+| Fallback | The original **text input**, whenever the list is empty |
+
+**Design calls I made, and why:**
+
+- **The branch list is its own state, not read off `validation`.** The form
+  clears `validation` whenever the branch changes (the connection result is
+  branch-specific), so deriving the dropdown from it would make the dropdown
+  delete itself the moment you picked from it. The list is scoped to the
+  *repository*, so it is cleared only when `repoUrl` / `authType` / `accessToken`
+  change — those can point somewhere else entirely.
+- **A branch that is not on the remote still appears as an option**, labelled as
+  the current value, so editing a site whose branch was deleted doesn't silently
+  swap the branch underneath you. An empty value shows as "Select a branch…" and
+  the field stays `required`, so the form can't submit a blank branch.
+- **No auto-fetch on typing the URL.** Validation is the existing, explicit
+  "repo data" step — it is the only path that also works for private repos
+  (where credentials are needed) and for SSH (where the key exists only after
+  save). Firing requests per keystroke would be noisy and mostly fail.
+- Branch names come back from `git ls-remote`, so a host that doesn't advertise
+  branches (e.g. dumb HTTP) naturally yields an empty list and the text box
+  stays — no special-casing needed.
 
 ---
 
@@ -378,6 +411,13 @@ header, using Node's `git http-backend` as the backend):
 - guardrails: unknown site → 404, malformed body → 400, Deployer → 403,
   anonymous → 401, and clearing to an empty set worked
 
+**Branch dropdown** (UI-only, no new server behaviour): the round-4 validation
+suite still passes in full (25 checks), including *"other branches are still
+listed"* — the `branches` array the dropdown renders was already covered. The
+change is presentational, so it was verified by typecheck + production build
+rather than a new headless suite; the submit path and `SiteInput.branch` are
+untouched.
+
 **Migrations** (11 checks, all passing):
 - pre-users DB with only a legacy `admin_password_hash`, booted with no
   `LIFTOFF_ADMIN_PASSWORD` → owner created from the old hash, signed in with the
@@ -457,8 +497,7 @@ and defaulting to 200. The product was never affected.
       links will point at localhost
 - [ ] Decide whether Deployers should see env var values (currently redacted)
 - [ ] Improve the validate idea (round 4 was the first cut): suggest the install
-      command from lockfiles, offer the returned branch list as a branch picker,
-      and show discovered scripts on the site detail page too
+      command from lockfiles, and show discovered scripts on the site detail page too
 - [ ] Optional: per-site scoping for Admins (currently all Admins reach all sites)
 - [ ] Optional: webhook-triggered deploys on push (no token/endpoint built yet)
 - [ ] Optional: GitHub App auth (PAT was chosen instead; an app would need key

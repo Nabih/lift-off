@@ -52,6 +52,10 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
   const [hasSshKey, setHasSshKey] = useState(false);
   const [validating, setValidating] = useState(false);
   const [validation, setValidation] = useState<ConnectionTest | null>(null);
+  // Branches discovered by validation. Kept apart from `validation` because it
+  // belongs to the repository, not the selected branch: picking a different
+  // branch must not throw the list away.
+  const [repoBranches, setRepoBranches] = useState<string[]>([]);
   const [validateError, setValidateError] = useState<string | null>(null);
   const [deployers, setDeployers] = useState<UserAccount[]>([]);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
@@ -133,6 +137,11 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
       setValidation(null);
       setValidateError(null);
     }
+    // The branch list describes a repository, so only changes that could point
+    // at a different one invalidate it — changing the branch itself does not.
+    if (key === 'repoUrl' || key === 'authType' || key === 'accessToken') {
+      setRepoBranches([]);
+    }
   }
 
   const canValidate =
@@ -148,17 +157,19 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
     setValidation(null);
     setValidateError(null);
     try {
-      setValidation(
-        await api.validateSite({
-          siteId: id,
-          repoUrl: form.repoUrl,
-          branch: form.branch,
-          authType: form.authType,
-          accessToken: form.accessToken || undefined,
-        }),
-      );
+      const result = await api.validateSite({
+        siteId: id,
+        repoUrl: form.repoUrl,
+        branch: form.branch,
+        authType: form.authType,
+        accessToken: form.accessToken || undefined,
+      });
+      setValidation(result);
+      // Populates the branch dropdown; an empty list falls back to free text.
+      setRepoBranches(result.branches);
     } catch (err) {
       setValidation(null);
+      setRepoBranches([]);
       setValidateError(
         err instanceof Error ? err.message : 'Could not validate the connection.',
       );
@@ -228,13 +239,44 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
 
               <label className="field">
                 <span>Branch</span>
-                <input
-                  className="input mono"
-                  value={form.branch}
-                  required
-                  placeholder="master"
-                  onChange={(event) => set('branch', event.target.value)}
-                />
+                {repoBranches.length > 0 ? (
+                  <>
+                    <select
+                      className="input mono"
+                      value={form.branch}
+                      required
+                      onChange={(event) => set('branch', event.target.value)}
+                    >
+                      {!repoBranches.includes(form.branch) && (
+                        <option value={form.branch}>
+                          {form.branch || 'Select a branch…'}
+                        </option>
+                      )}
+                      {repoBranches.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                    <small className="hint">
+                      {repoBranches.length} branch
+                      {repoBranches.length === 1 ? '' : 'es'} found on the remote.
+                    </small>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      className="input mono"
+                      value={form.branch}
+                      required
+                      placeholder="master"
+                      onChange={(event) => set('branch', event.target.value)}
+                    />
+                    <small className="hint">
+                      Validate the connection to load this repository's branches.
+                    </small>
+                  </>
+                )}
               </label>
             </div>
 

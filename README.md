@@ -6,8 +6,9 @@ Lift-Off clones the repo, runs the build, and ships the result.
 
 - Repositories over an **SSH deploy key**, a **personal access token**, or
   anonymously for public repos.
-- **Validate a connection while configuring a site**, and pick a build command
-  from the scripts in the repository's `package.json`.
+- **Validate a connection while configuring a site**, pick the branch from a
+  dropdown of the repository's branches, and pick a build command from the
+  scripts in the repository's `package.json`.
 - **Admin** and **Deployer** roles, with deployers limited to the sites they are
   assigned.
 - Atomic releases with a `current` symlink and one-click rollback, or a simple
@@ -186,6 +187,10 @@ guessing what its scripts are called.
 - A **Reachable** badge means the remote answered and the branch exists. A
   *Branch missing* badge still means the connection works but the branch name is
   wrong; the panel lists the branches that do exist.
+- A successful check also turns the **Branch** box into a **dropdown** of the
+  repository's branches. If the check returns no branches (unreachable repository,
+  or a host that does not list them), the box stays a free-text field so you can
+  still type a branch name.
 - Scripts are shown from the branch's `package.json` (e.g. `npm run build`,
   adjusted for a declared package manager such as pnpm or yarn), but nothing from
   the repository is executed by the check.
@@ -197,7 +202,7 @@ guessing what its scripts are called.
 | Setting | Meaning |
 | --- | --- |
 | **Repository URL** | SSH (`git@github.com:owner/repo.git`) for deploy keys, or HTTPS for tokens and public repos. |
-| **Branch** | Defaults to `master`. |
+| **Branch** | Defaults to `master`. Becomes a dropdown of the remote's branches after a successful **Validate connection**; stays free text otherwise. |
 | **Authentication** | Per-site SSH deploy key, a personal access token, or none for public repos. |
 | **Access token** | Only for token auth. Stored encrypted and never shown again; leave blank to keep the saved one. |
 | **Install command** | Runs before the build, e.g. `npm ci`. Leave empty to skip. |
