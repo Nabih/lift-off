@@ -236,10 +236,11 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
     setSaving(true);
     setError(null);
     try {
+      const payload = { ...form, sshPrivateKey: form.sshPrivateKey?.trim() || undefined };
       const saved =
         mode === 'create'
-          ? await api.createSite(form)
-          : await api.updateSite(id as string, form);
+          ? await api.createSite(payload)
+          : await api.updateSite(id as string, payload);
       // A new site has no id until now, so user access is applied after the save.
       await api.setSiteAccess(saved.id, selectedUserIds);
       navigate(`/sites/${saved.id}`);

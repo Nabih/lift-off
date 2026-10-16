@@ -33,7 +33,7 @@ const siteSchema = z.object({
   /** Personal access token for `authType: 'token'`. Blank on update keeps the stored one. */
   accessToken: z.string().trim().max(500).optional(),
   /** Private SSH key pasted by the admin instead of generating one. */
-  sshPrivateKey: z.string().trim().min(20).max(20000).optional(),
+  sshPrivateKey: z.string().trim().max(20000).optional().refine((v) => !v || v.length >= 20, { message: 'SSH key too short (at least 20 characters).' }).transform((v) => (v && v.length ? v : undefined)),
   installCommand: z.string().max(2000).default('npm ci'),
   buildCommand: z.string().max(2000).default('npm run build'),
   distDir: z.string().trim().min(1, 'Output directory is required.').max(500).default('dist'),
@@ -393,7 +393,7 @@ const validateSchema = z.object({
   branch: z.string().trim().min(1, 'Branch is required.').max(200).default('master'),
   authType: z.enum(['ssh', 'token', 'none']).default('ssh'),
   accessToken: z.string().trim().max(500).optional(),
-  sshPrivateKey: z.string().trim().min(20).max(20000).optional(),
+  sshPrivateKey: z.string().trim().max(20000).optional().refine((v) => !v || v.length >= 20, { message: 'SSH key too short (at least 20 characters).' }).transform((v) => (v && v.length ? v : undefined)),
 });
 
 /**
