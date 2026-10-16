@@ -193,22 +193,17 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
       setValidation(result);
       // Populates the branch dropdown; an empty list falls back to free text.
       setRepoBranches(result.branches);
-      const currentBranch = (branchOverride ?? form.branch).trim();
-      // If the current branch isn't on the remote but a common default is, pick
-      // it automatically so the form never silently keeps "master" for a repo
-      // whose default branch is "main".
-      if (result.branches.length > 0 && !result.branches.includes(currentBranch)) {
-        const preferred =
-          (result.branches.includes('main') && 'main') ||
-          (result.branches.includes('master') && 'master') ||
-          result.branches[0] ||
-          '';
-        if (preferred && preferred !== currentBranch) {
-          setForm((previous) => ({ ...previous, branch: preferred }));
-          // Re-validate the new branch so branch-found/message/package.json match.
-          void validateConnection(preferred);
-          return;
-        }
+      // The backend resolves a common default when the requested branch is missing,
+      // so a single round-trip covers both the availability check and "main"/"master"
+      // fallback (rather than a re-run after picking).
+      if (
+        result.resolvedBranch &&
+        result.resolvedBranch !== (branchOverride ?? form.branch).trim()
+      ) {
+        setForm((previous) => ({
+          ...previous,
+          branch: result.resolvedBranch as string,
+        }));
       }
     } catch (err) {
       if (requestId !== validateRequest.current) return;

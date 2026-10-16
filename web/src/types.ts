@@ -167,6 +167,8 @@ export interface ConnectionTest {
   branches: string[];
   /** Only returned by /api/sites/validate (the site form). */
   branchFound?: boolean;
+  /** Branch the result actually validated, possibly defaulted from the requested one. */
+  resolvedBranch?: string | null;
   packageJson?: PackageJsonInfo | null;
 }
 

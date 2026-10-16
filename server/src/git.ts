@@ -368,6 +368,8 @@ export interface RepoValidation {
   branchFound: boolean;
   /** package.json at the branch head, or null when missing or unreadable. */
   packageJson: PackageJsonInfo | null;
+  /** Branch the result actually validated (the chosen one, possibly defaulted). */
+  resolvedBranch: string | null;
 }
 
 function firstLine(error: unknown): string {
@@ -470,19 +472,39 @@ export async function validateRepo(
       message: `Could not reach the repository. ${firstLine(error)}`,
       branches: [],
       branchFound: false,
+      resolvedBranch: null,
       packageJson: null,
     };
   }
 
-  const branchFound = branches.includes(site.branch);
+  const requestedBranch = site.branch;
+  const branchFound = branches.includes(requestedBranch);
   if (!branchFound) {
+    const fallback =
+      (branches.includes('main') && 'main') ||
+      (branches.includes('master') && 'master') ||
+      branches[0] ||
+      null;
+    if (fallback) {
+      const fallbackSite = { ...site, branch: fallback };
+      const packageJson = await readPackageJsonAtHead(fallbackSite, env);
+      return {
+        ok: true,
+        message: packageJson
+          ? `Connected. "${requestedBranch}" was not found, so validated "${fallback}" instead. Found package.json.`
+          : `Connected. "${requestedBranch}" was not found, so validated "${fallback}" instead. No package.json at the repository root.`,
+        branches,
+        branchFound: true,
+        resolvedBranch: fallback,
+        packageJson,
+      };
+    }
     return {
       ok: true,
-      message: `Connected, but branch "${site.branch}" was not found. Available: ${branches
-        .slice(0, 10)
-        .join(', ')}`,
+      message: `Connected, but found no branches on the remote.`,
       branches,
-      branchFound,
+      branchFound: false,
+      resolvedBranch: null,
       packageJson: null,
     };
   }
@@ -491,10 +513,11 @@ export async function validateRepo(
   return {
     ok: true,
     message: packageJson
-      ? `Connected on "${site.branch}". Found package.json.`
-      : `Connected on "${site.branch}". No package.json at the repository root.`,
+      ? `Connected on "${requestedBranch}". Found package.json.`
+      : `Connected on "${requestedBranch}". No package.json at the repository root.`,
     branches,
-    branchFound,
+    branchFound: true,
+    resolvedBranch: requestedBranch,
     packageJson,
   };
 }
