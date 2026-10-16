@@ -315,6 +315,37 @@ export function allUserSitePairs(): Array<{ user_id: string; site_id: string }> 
     .all() as unknown as Array<{ user_id: string; site_id: string }>;
 }
 
+/** Users assigned to a site. */
+export function assignedUserIds(siteId: string): string[] {
+  const rows = db
+    .prepare('SELECT user_id FROM user_sites WHERE site_id = ?')
+    .all(siteId) as unknown as Array<{ user_id: string }>;
+  return rows.map((row) => row.user_id);
+}
+
+/**
+ * Replaces the set of users assigned to a site, in one transaction. Only
+ * Deployers are ever stored: Admins reach every site regardless, so assigning
+ * one would be meaningless.
+ */
+export function setSiteUsers(siteId: string, userIds: string[]): void {
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM user_sites WHERE site_id = ?').run(siteId);
+    const insert = db.prepare(
+      'INSERT OR IGNORE INTO user_sites (user_id, site_id) VALUES (?, ?)',
+    );
+    for (const userId of userIds) {
+      const user = getUser(userId);
+      if (user && user.role === 'deployer') insert.run(userId, siteId);
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
 export function getUserByEmail(email: string): UserRow | null {
   const row = db
     .prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE')

@@ -15,7 +15,8 @@ verified end to end. Not yet deployed to the VPS.
 
 Rounds so far: (1) core deploy pipeline, (2) users/roles/owner, (3) PAT auth +
 email password reset, (4) form-time repository validation + script discovery,
-(5) renamed to **Lift-Off** and published publicly.
+(5) renamed to **Lift-Off** and published publicly, (6) site-side access
+assignment + filtered assignment lists.
 
 ---
 
@@ -167,6 +168,34 @@ and no "legacy Deplego" special-casing to remember.
 alongside the code — it contains design rationale, not secrets. Say the word if it
 should be moved out of the public repo.
 
+### Round 6 — assign access from the site too, with filters
+
+The assignment control only existed on the user side (**Users → Edit → Assigned
+sites**). It was reachable but only from one direction, and the lists had no
+filter. Added the other direction and a filter to both.
+
+| Question | Decision |
+| --- | --- |
+| Where else to assign | **Site create/edit form**, new "User access" card listing Deployers |
+| New endpoint | **`PUT /api/sites/:id/access`** — sets the site's user set atomically (admin-only) |
+| Filter | One shared `CheckboxList` component used by both grids |
+
+**Design calls I made, and why:**
+
+- **A site-scoped endpoint, not a loop of `PATCH /api/users/:id`.** Assigning
+  from the site side would otherwise mean N requests and a half-applied state if
+  one failed. `setSiteUsers` replaces the site's rows inside one transaction.
+- **Only Deployer ids are stored.** An Admin id in the payload is silently
+  dropped — Admins reach every site regardless, so storing it would be a lie the
+  UI then has to explain. Verified by test.
+- **Create-form assignment is applied after `POST /api/sites` returns**, because
+  the site id does not exist before then. The card says so in create mode rather
+  than pretending it saved with the site.
+- **Shared `CheckboxList`** instead of duplicating filter + grid markup in two
+  pages; it also reports "N of M selected", which matters for a multi-select.
+- The site-scoped endpoint is admin-only like every other site mutation, even
+  though Deployers can read their sites.
+
 ---
 
 ## 3. How it works
@@ -210,6 +239,9 @@ HTTP header via `GIT_CONFIG_*` env vars), or `none` (public HTTPS).
 - **Owner** = first account. Admin that cannot be deleted, disabled, or demoted;
   only the owner can modify the owner.
 - Admins bypass the site assignment list entirely.
+- Assignments can be edited from **either** side (a user's sites, or a site's
+  users) and both lists are filterable; the two views write to the same
+  `user_sites` table, so they never disagree.
 - Roles are re-read from the DB on **every request** (not trusted from the JWT),
   so disable/delete/demote takes effect immediately on live sessions.
 - Sessions are additionally invalidated by **session version**: a password change
@@ -254,7 +286,7 @@ server/src/
   crypto.ts       AES-256-GCM + scrypt
   db.ts           schema (sites, deployments, deployment_logs, settings, users,
                   user_sites, password_resets) + ensureColumn migrations
-  store.ts        all SQL
+  store.ts        All SQL queries (users, sites, user_sites assignments)
   git.ts          clone/fetch/reset, SSH + token auth env, connection test,
                   form-time validation + shallow package.json read
   ssh.ts          ssh-keygen keypair generation
@@ -270,7 +302,8 @@ server/src/
   routes/         auth.ts, users.ts, sites.ts, deployments.ts (incl. SSE), settings.ts
 web/src/
   App.tsx, api.ts, auth.tsx, format.ts
-  components/     Layout, LogViewer, StatusBadge, CopyButton, EnvVarsEditor
+  components/     Layout, LogViewer, StatusBadge, CopyButton, EnvVarsEditor,
+                  CheckboxList (filtered multi-select for access assignment)
   pages/          Login, ForgotPassword, ResetPassword, Sites, SiteForm, SiteDetail,
                   Deployments, Deployment, Users, Settings
 ```
@@ -330,6 +363,20 @@ header, using Node's `git http-backend` as the backend):
   git server saw fresh authenticated hits
 - a Deployer was refused (403)
 - no `validate-*` scratch directory was left behind in `workspaces/`
+
+**Site-side access assignment** (24 checks, all passing):
+- `PUT /api/sites/:id/access` stored two Deployers on a site and both then saw
+  it in their own site list
+- a Deployer saw exactly their assigned site and got **403** on an unassigned one
+- one Deployer held two sites (granted from two different sites)
+- a site with nobody assigned stayed invisible to Deployers but **visible to
+  admins**
+- revoking took effect on the *next request* on a live session: the revoked
+  Deployer kept their other site and immediately got 403 on the revoked one
+- an Admin id sent in the payload was **not stored**; a second Admin reached the
+  site with no assignment at all
+- guardrails: unknown site → 404, malformed body → 400, Deployer → 403,
+  anonymous → 401, and clearing to an empty set worked
 
 **Migrations** (11 checks, all passing):
 - pre-users DB with only a legacy `admin_password_hash`, booted with no

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import CheckboxList from '../components/CheckboxList';
 import { formatDateTime, formatRelative } from '../format';
 import type { Role, Site, UserAccount } from '../types';
 
@@ -358,30 +359,13 @@ function UserForm({ existing, sites, onCancel, onSaved }: FormProps) {
       {role === 'deployer' && (
         <div className="field">
           <span>Assigned sites</span>
-          {sites.length === 0 ? (
-            <p className="muted small">
-              No sites exist yet. Create a site first, then assign it here.
-            </p>
-          ) : (
-            <div className="checkbox-grid">
-              {sites.map((site) => (
-                <label className="checkbox" key={site.id}>
-                  <input
-                    type="checkbox"
-                    checked={siteIds.includes(site.id)}
-                    onChange={(event) =>
-                      setSiteIds((previous) =>
-                        event.target.checked
-                          ? [...previous, site.id]
-                          : previous.filter((id) => id !== site.id),
-                      )
-                    }
-                  />
-                  {site.name}
-                </label>
-              ))}
-            </div>
-          )}
+          <CheckboxList
+            options={sites.map((site) => ({ id: site.id, label: site.name }))}
+            selected={siteIds}
+            onChange={setSiteIds}
+            filterPlaceholder="Filter sites…"
+            emptyMessage="No sites exist yet. Create a site first, then assign it here."
+          />
         </div>
       )}
 

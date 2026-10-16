@@ -207,6 +207,7 @@ guessing what its scripts are called.
 | **Target directory** | Absolute path on the server where output is deployed. |
 | **Strategy** | `releases` or `direct` (see below). |
 | **Releases to keep** | How many old releases to retain before pruning. |
+| **User access** | Which Deployers may operate the site. Admins always have access; a site with nobody ticked is admin-only. |
 
 ### Deploy strategies
 
@@ -260,10 +261,18 @@ There are two roles. The first account, created on boot, is additionally the
   the role to hand to a teammate or a CI job: they can ship, but cannot repoint a
   target directory, change a repository URL, or read build secrets.
 
-Assignments are set per user under **Users → Edit → Assigned sites**. Admins
-ignore the assignment list and reach every site. Changes take effect on the next
-request — disabling or deleting an account ends its session immediately, and
-removing a site assignment revokes access to that site right away.
+Assignments can be set from either side, and both lists have a filter box so you
+can find the right user or site quickly:
+
+- **By user** — **Users → Edit → Assigned sites**.
+- **By site** — **Edit site → User access** (or when creating a site; the
+  assignment is applied when the site is saved).
+
+Admins ignore the assignment list and reach every site. A site with nobody
+assigned is admin-only, and a user can hold as many sites as you tick. Changes
+take effect on the next request — disabling or deleting an account ends its
+session immediately, and removing a site assignment revokes access to that site
+right away.
 
 Deleting a user or a site cleans up the corresponding assignments automatically.
 
@@ -414,6 +423,7 @@ All `/api/sites` and `/api/deployments` routes require the session cookie.
 | `GET/PATCH/DELETE` | `/api/sites/:id` | Read, update, delete a site. |
 | `POST` | `/api/sites/validate` | Check a repo config from the form and return its `package.json` scripts (**admin**). |
 | `POST` | `/api/sites/:id/ssh-key` | Regenerate the deploy keypair. |
+| `PUT` | `/api/sites/:id/access` | Replace which Deployers can reach a site (**admin**). |
 | `POST` | `/api/sites/:id/test` | Verify repo access and branch. |
 | `POST` | `/api/sites/:id/deploy` | Queue a build → `202 { deploymentId }`. |
 | `POST` | `/api/sites/:id/rollback` | Roll `current` back one release. |
@@ -451,7 +461,8 @@ server/src/
 web/src/
   App.tsx         Routes, auth guard, admin guard, public reset routes
   api.ts          Typed API client
-  components/     Layout, LogViewer, StatusBadge, CopyButton, EnvVarsEditor
+  components/     Layout, LogViewer, StatusBadge, CopyButton, EnvVarsEditor,
+                  CheckboxList (filtered multi-select for access assignment)
   pages/          Login, ForgotPassword, ResetPassword, Sites, SiteForm,
                   SiteDetail, Deployments, Deployment, Users, Settings
 ```

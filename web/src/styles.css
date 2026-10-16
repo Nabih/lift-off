@@ -196,6 +196,12 @@ code,
   border-radius: var(--radius-sm);
 }
 
+/* Filtered multi-select used for site/user access assignment. */
+.checkbox-list {
+  display: grid;
+  gap: 8px;
+}
+
 .row-actions {
   text-align: right;
   white-space: nowrap;

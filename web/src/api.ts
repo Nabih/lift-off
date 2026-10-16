@@ -125,6 +125,11 @@ export const api = {
     request<{ ok: boolean }>(`/api/sites/${id}`, { method: 'DELETE' }),
   regenerateSshKey: (id: string) =>
     request<Site>(`/api/sites/${id}/ssh-key`, { method: 'POST' }),
+  setSiteAccess: (id: string, userIds: string[]) =>
+    request<{ ok: boolean; userIds: string[] }>(`/api/sites/${id}/access`, {
+      method: 'PUT',
+      body: { userIds },
+    }),
   testSite: (id: string) =>
     request<ConnectionTest>(`/api/sites/${id}/test`, { method: 'POST' }),
   validateSite: (input: {

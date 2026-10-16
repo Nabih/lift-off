@@ -1,12 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
+import CheckboxList from '../components/CheckboxList';
 import EnvVarsEditor from '../components/EnvVarsEditor';
 import type {
   AuthType,
   ConnectionTest,
   DeployStrategy,
   SiteInput,
+  UserAccount,
 } from '../types';
 
 const DEFAULTS: SiteInput = {
@@ -51,6 +53,32 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
   const [validating, setValidating] = useState(false);
   const [validation, setValidation] = useState<ConnectionTest | null>(null);
   const [validateError, setValidateError] = useState<string | null>(null);
+  const [deployers, setDeployers] = useState<UserAccount[]>([]);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+
+  // Deployers, for the access section. On edit, pre-tick the ones already
+  // assigned to this site.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listUsers()
+      .then((result) => {
+        if (cancelled) return;
+        const list = result.users.filter((account) => account.role === 'deployer');
+        setDeployers(list);
+        if (mode === 'edit' && id) {
+          setSelectedUserIds(
+            list.filter((account) => account.siteIds.includes(id)).map((a) => a.id),
+          );
+        }
+      })
+      .catch(() => {
+        // The form still works without the access list; leave it empty.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, mode]);
 
   useEffect(() => {
     if (mode !== 'edit' || !id) return;
@@ -148,6 +176,8 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
         mode === 'create'
           ? await api.createSite(form)
           : await api.updateSite(id as string, form);
+      // A new site has no id until now, so user access is applied after the save.
+      await api.setSiteAccess(saved.id, selectedUserIds);
       navigate(`/sites/${saved.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the site.');
@@ -423,6 +453,26 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
               />
               Enabled (disables the deploy button when unchecked)
             </label>
+          </section>
+
+          <section className="card">
+            <h2>User access</h2>
+            <p className="muted small">
+              Tick the Deployers who may deploy and roll back this site. Admins
+              always have access to every site, and a site with nobody ticked stays
+              admin-only.
+              {mode === 'create' && ' Access is applied when you create the site.'}
+            </p>
+            <CheckboxList
+              options={deployers.map((account) => ({
+                id: account.id,
+                label: account.username,
+              }))}
+              selected={selectedUserIds}
+              onChange={setSelectedUserIds}
+              filterPlaceholder="Filter users…"
+              emptyMessage="No Deployer accounts yet. Add one under Users, then assign it here."
+            />
           </section>
 
           <div className="form-actions">

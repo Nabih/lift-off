@@ -326,6 +326,34 @@ sitesRouter.post('/:id/ssh-key', async (req, res, next) => {
   }
 });
 
+const accessSchema = z.object({
+  /** Deployer user ids that should have access to this site. */
+  userIds: z.array(z.string()).default([]),
+});
+
+/**
+ * Replaces which Deployers can reach a site. Admins always have access, so only
+ * Deployer ids are stored. Admin-only, like every other site mutation.
+ */
+sitesRouter.put('/:id/access', (req, res) => {
+  if (!isAdmin(requireUser(req))) {
+    denyNonAdmin(res);
+    return;
+  }
+  const site = store.getSite(req.params.id);
+  if (!site) {
+    res.status(404).json({ error: 'Site not found.' });
+    return;
+  }
+  const parsed = accessSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+  store.setSiteUsers(site.id, parsed.data.userIds);
+  res.json({ ok: true, userIds: store.assignedUserIds(site.id) });
+});
+
 sitesRouter.post('/:id/test', async (req, res, next) => {
   try {
     const site = loadSiteForRequest(req, res);
