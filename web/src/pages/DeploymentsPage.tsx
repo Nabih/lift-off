@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import CommitRef from '../components/CommitRef';
 import StatusBadge from '../components/StatusBadge';
-import { formatDateTime, formatDuration, formatRelative, shortSha } from '../format';
+import { formatDateTime, formatDuration, formatRelative } from '../format';
 import type { Deployment } from '../types';
 
 export default function DeploymentsPage() {
@@ -77,12 +78,12 @@ export default function DeploymentsPage() {
                     {deployment.kind === 'rollback' && (
                       <span className="badge muted">rollback</span>
                     )}
+                    {deployment.redeploy && (
+                      <span className="badge queued">re-deployment</span>
+                    )}
                   </td>
-                  <td className="mono small">
-                    {shortSha(deployment.commitSha)}{' '}
-                    <span className="muted">
-                      {deployment.commitMessage?.slice(0, 40) ?? ''}
-                    </span>
+                  <td className="small">
+                    <CommitRef deployment={deployment} messageLength={40} />
                   </td>
                   <td className="small" title={formatDateTime(deployment.queuedAt)}>
                     {formatRelative(deployment.queuedAt)}

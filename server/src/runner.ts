@@ -1,11 +1,12 @@
 import { MAX_CONCURRENT_BUILDS, repoDirFor } from './config.js';
 import { randomId } from './crypto.js';
-import { deployArtifact, resolveDistDir, rollbackRelease } from './deploy.js';
+import { deployArtifact, releaseNameSha, resolveDistDir, rollbackRelease } from './deploy.js';
 import { syncRepo } from './git.js';
 import { createBuildLogger, type BuildLogger } from './log.js';
 import { logBus } from './logbus.js';
 import { runStreaming } from './process.js';
 import {
+  findDeploymentByShaPrefix,
   getDeployment,
   getSite,
   insertDeployment,
@@ -21,7 +22,19 @@ import type { DeploymentKind, SiteRow } from './types.js';
 const pending: string[] = [];
 let active = 0;
 
-function enqueue(siteId: string, triggeredBy: string, kind: DeploymentKind): string {
+export interface EnqueueOptions {
+  /** Branch to record on the deployment. Defaults to the site's current branch. */
+  branch?: string | null;
+  /** Mark the deployment as a forced re-deploy of what was already live. */
+  redeploy?: boolean;
+}
+
+function enqueue(
+  siteId: string,
+  triggeredBy: string,
+  kind: DeploymentKind,
+  options: EnqueueOptions = {},
+): string {
   const site = getSite(siteId);
   if (!site) throw new Error('Site not found.');
 
@@ -31,8 +44,10 @@ function enqueue(siteId: string, triggeredBy: string, kind: DeploymentKind): str
     site_id: site.id,
     kind,
     status: 'queued',
+    branch: options.branch ?? site.branch,
     commit_sha: null,
     commit_message: null,
+    redeploy: options.redeploy ? 1 : 0,
     triggered_by: triggeredBy,
     error: null,
     queued_at: new Date().toISOString(),
@@ -49,8 +64,12 @@ function enqueue(siteId: string, triggeredBy: string, kind: DeploymentKind): str
  * Creates a deployment record and schedules it. Builds run one-at-a-time by
  * default (LIFTOFF_MAX_CONCURRENT_BUILDS) so a busy site cannot starve the box.
  */
-export function enqueueDeployment(siteId: string, triggeredBy: string): string {
-  return enqueue(siteId, triggeredBy, 'deploy');
+export function enqueueDeployment(
+  siteId: string,
+  triggeredBy: string,
+  options: EnqueueOptions = {},
+): string {
+  return enqueue(siteId, triggeredBy, 'deploy', options);
 }
 
 /** Queues a rollback of the `current` symlink to the previous release. */
@@ -145,7 +164,7 @@ async function runDeployment(deploymentId: string): Promise<void> {
     }
 
     if (deployment.kind === 'rollback') {
-      await performRollback(site, log);
+      await performRollback(site, deploymentId, log);
     } else {
       await performDeploy(site, deploymentId, log);
     }
@@ -180,7 +199,12 @@ async function performDeploy(
   log.info(
     `${cloned ? 'Cloned' : 'Fast-forwarded'} to ${sha.slice(0, 7)} — ${subject}`,
   );
-  updateDeployment(deploymentId, { commit_sha: sha, commit_message: subject });
+  // Record the branch we actually built, in case it changed since enqueue.
+  updateDeployment(deploymentId, {
+    branch: site.branch,
+    commit_sha: sha,
+    commit_message: subject,
+  });
 
   const repoDir = repoDirFor(site.id);
   const env = buildEnvironment(site);
@@ -205,15 +229,32 @@ async function performDeploy(
 }
 
 /** Repoints `current` at the release before the active one. */
-async function performRollback(site: SiteRow, log: BuildLogger): Promise<void> {
+async function performRollback(
+  site: SiteRow,
+  deploymentId: string,
+  log: BuildLogger,
+): Promise<void> {
   if (site.deploy_strategy !== 'releases') {
     throw new Error(
       'Rollback is only available for sites using the "releases" deploy strategy.',
     );
   }
   log.info(`Rolling back "${site.name}"`);
-  const target = await rollbackRelease(site.target_dir, log);
-  log.success(`Rolled back: current -> ${target}`);
+  const result = await rollbackRelease(site.target_dir, log);
+
+  // Record the commit that is now serving, so the deploy check compares against
+  // the release we rolled back to and not the one we rolled back from. The
+  // release name only carries a short sha, so the full commit is recovered from
+  // the deployment that produced it when possible.
+  const sha7 = releaseNameSha(result.releaseName);
+  const origin = sha7 ? findDeploymentByShaPrefix(site.id, sha7) : null;
+  updateDeployment(deploymentId, {
+    commit_sha: origin?.commit_sha ?? sha7,
+    commit_message: origin?.commit_message ?? null,
+    branch: origin?.branch ?? site.branch,
+  });
+
+  log.success(`Rolled back: current -> ${result.releaseDir}`);
 }
 
 export { logBus };

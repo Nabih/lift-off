@@ -105,7 +105,7 @@ export function listDeploymentsWithSiteName(options: {
   limit?: number;
   /** When set, only deployments for these sites are returned. */
   restrictSiteIds?: string[];
-}): Array<DeploymentRow & { site_name: string }> {
+}): Array<DeploymentRow & { site_name: string; site_repo_url: string | null }> {
   const limit = options.limit ?? 50;
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -125,27 +125,29 @@ export function listDeploymentsWithSiteName(options: {
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   return db
     .prepare(
-      `SELECT d.*, s.name AS site_name FROM deployments d
+      `SELECT d.*, s.name AS site_name, s.repo_url AS site_repo_url FROM deployments d
        LEFT JOIN sites s ON s.id = d.site_id
        ${where}
        ORDER BY d.queued_at DESC LIMIT ?`,
     )
-    .all(...params, limit) as unknown as Array<DeploymentRow & { site_name: string }>;
+    .all(...params, limit) as unknown as Array<DeploymentRow & { site_name: string; site_repo_url: string | null }>;
 }
 
 export function insertDeployment(row: DeploymentRow): void {
   db.prepare(
     `INSERT INTO deployments (
-       id, site_id, kind, status, commit_sha, commit_message, triggered_by,
-       error, queued_at, started_at, finished_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       id, site_id, kind, status, branch, commit_sha, commit_message, redeploy,
+       triggered_by, error, queued_at, started_at, finished_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     row.id,
     row.site_id,
     row.kind,
     row.status,
+    row.branch,
     row.commit_sha,
     row.commit_message,
+    row.redeploy,
     row.triggered_by,
     row.error,
     row.queued_at,
@@ -205,6 +207,42 @@ export function failStuckDeployments(): number {
     )
     .run(new Date().toISOString());
   return Number(result.changes ?? 0);
+}
+
+/**
+ * What is currently serving for a site: the newest successful deployment that
+ * recorded a commit. A rollback records the commit it rolled back to, so this
+ * stays accurate after a rollback rather than pointing at the release that was
+ * superseded.
+ */
+export function getLiveDeployment(siteId: string): DeploymentRow | null {
+  const row = db
+    .prepare(
+      `SELECT * FROM deployments
+       WHERE site_id = ? AND status = 'success' AND commit_sha IS NOT NULL
+       ORDER BY COALESCE(finished_at, queued_at) DESC LIMIT 1`,
+    )
+    .get(siteId) as unknown as DeploymentRow | undefined;
+  return row ?? null;
+}
+
+/**
+ * Finds the deployment that produced a commit, given a short sha. Release
+ * directory names only carry a 7-character sha, so a rollback uses this to
+ * recover the full commit and branch it reverted to.
+ */
+export function findDeploymentByShaPrefix(
+  siteId: string,
+  prefix: string,
+): DeploymentRow | null {
+  const row = db
+    .prepare(
+      `SELECT * FROM deployments
+       WHERE site_id = ? AND commit_sha LIKE ? AND status = 'success'
+       ORDER BY COALESCE(finished_at, queued_at) DESC LIMIT 1`,
+    )
+    .get(siteId, `${prefix}%`) as unknown as DeploymentRow | undefined;
+  return row ?? null;
 }
 
 /* -------------------------------------------------------------------------- */

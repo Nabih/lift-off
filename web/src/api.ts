@@ -2,6 +2,7 @@ import type {
   AuthType,
   AuthUser,
   ConnectionTest,
+  DeployCheck,
   Deployment,
   LogLine,
   MailSettings,
@@ -139,8 +140,12 @@ export const api = {
     authType: AuthType;
     accessToken?: string;
   }) => request<ConnectionTest>('/api/sites/validate', { method: 'POST', body: input }),
-  deploySite: (id: string) =>
-    request<{ deploymentId: string }>(`/api/sites/${id}/deploy`, { method: 'POST' }),
+  deploySite: (id: string, force = false) =>
+    request<{ deploymentId: string }>(`/api/sites/${id}/deploy`, {
+      method: 'POST',
+      body: { force },
+    }),
+  deployCheck: (id: string) => request<DeployCheck>(`/api/sites/${id}/deploy-check`),
   rollbackSite: (id: string) =>
     request<{ deploymentId: string }>(`/api/sites/${id}/rollback`, {
       method: 'POST',

@@ -13,6 +13,8 @@ Lift-Off clones the repo, runs the build, and ships the result.
   assigned.
 - Atomic releases with a `current` symlink and one-click rollback, or a simple
   direct copy.
+- **Re-deploy awareness**: a deploy that would reproduce the live branch and
+  commit must be confirmed and forced, and commits and branches link to GitHub.
 - **Password resets by email**, with SMTP configured in the UI.
 
 ```
@@ -243,6 +245,26 @@ finish within the same second.
 **Direct copy** — the target directory is emptied and replaced on every deploy.
 Simpler, but there is a brief window with no files and no rollback.
 
+### Deploying, and re-deploying
+
+**Deploy now** always asks for confirmation first. The dialog shows the branch,
+the remote's current head commit, and what is currently live.
+
+A deploy is blocked by default when it would change nothing. If the branch **and**
+the commit that would be deployed are the ones already serving, the dialog offers a
+**Force deploy** tick box and the deploy is refused (HTTP `409`) until it is ticked.
+This stops an accidental "deploy" from stacking an identical release on top of the
+one that is already live. The server performs the same check, so the guard holds for
+the API too, not just the UI.
+
+Each deployment records the **branch** and the **head commit** it built. In the
+deployment listings the short commit links to that commit on GitHub, and the branch
+links to the tree **at that commit** — what was deployed, not the branch's current
+tip. A forced deploy of what was already live is labelled **re-deployment**.
+
+Rollbacks record the commit they reverted to, so "what is live" stays accurate after
+a roll back instead of pointing at the release that was superseded.
+
 ---
 
 ## Users and roles
@@ -434,7 +456,8 @@ All `/api/sites` and `/api/deployments` routes require the session cookie.
 | `POST` | `/api/sites/:id/ssh-key` | Regenerate the deploy keypair. |
 | `PUT` | `/api/sites/:id/access` | Replace which Deployers can reach a site (**admin**). |
 | `POST` | `/api/sites/:id/test` | Verify repo access and branch. |
-| `POST` | `/api/sites/:id/deploy` | Queue a build → `202 { deploymentId }`. |
+| `POST` | `/api/sites/:id/deploy` | Queue a build. Body `{ force?: boolean }`; refused with `409` when the branch + commit are already live unless forced → `202 { deploymentId }`. |
+| `GET` | `/api/sites/:id/deploy-check` | What a deploy would do: the live branch/commit, the remote head, and whether it would be a re-deploy. |
 | `POST` | `/api/sites/:id/rollback` | Roll `current` back one release. |
 | `GET` | `/api/sites/:id/releases` | List releases and which is live. |
 | `GET` | `/api/deployments` | Deployment history (`?siteId=&limit=`). |
@@ -470,8 +493,10 @@ server/src/
 web/src/
   App.tsx         Routes, auth guard, admin guard, public reset routes
   api.ts          Typed API client
+  github.ts       Git remote URL → GitHub commit/branch links
   components/     Layout, LogViewer, StatusBadge, CopyButton, EnvVarsEditor,
-                  CheckboxList (filtered multi-select for access assignment)
+                  CheckboxList (filtered multi-select for access assignment),
+                  CommitRef (linked commit + branch for a deployment)
   pages/          Login, ForgotPassword, ResetPassword, Sites, SiteForm,
                   SiteDetail, Deployments, Deployment, Users, Settings
 ```

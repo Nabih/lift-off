@@ -6,7 +6,7 @@ import type { AuthUser } from '../auth.js';
 import { WORKSPACES_DIR, keyPathFor } from '../config.js';
 import { encrypt, randomId } from '../crypto.js';
 import { listReleases, validateTargetDir } from '../deploy.js';
-import { testConnection, validateRepo } from '../git.js';
+import { resolveRemoteHead, testConnection, validateRepo } from '../git.js';
 import { canAccessSite, firstIssue, isAdmin, requireUser } from '../guards.js';
 import { enqueueDeployment, enqueueRollback } from '../runner.js';
 import { generateSshKeypair } from '../ssh.js';
@@ -437,15 +437,78 @@ sitesRouter.post('/validate', async (req, res, next) => {
   }
 });
 
-sitesRouter.post('/:id/deploy', (req, res) => {
-  const site = loadSiteForRequest(req, res);
-  if (!site) return;
-  if (!site.enabled) {
-    res.status(409).json({ error: 'This site is disabled.' });
-    return;
+/** Compares two commit shas when one may be abbreviated (7 chars from a release name). */
+function sameCommit(a: string | null, b: string | null): boolean {
+  if (!a || !b) return false;
+  const length = Math.min(a.length, b.length);
+  return a.slice(0, length).toLowerCase() === b.slice(0, length).toLowerCase();
+}
+
+/**
+ * Describes what a deploy of this site would do: the branch and commit that are
+ * currently live, the remote's head for the configured branch, and whether the
+ * two are the same (which makes a deploy a no-op unless it is forced).
+ *
+ * The remote lookup needs the network, so a failure leaves `remoteSha` null and
+ * `wouldRedeploy` false — the deploy itself is then free to fail with a clearer
+ * message rather than being blocked here.
+ */
+async function buildDeployCheck(site: SiteRow) {
+  const live = store.getLiveDeployment(site.id);
+  const remoteSha = await resolveRemoteHead(site);
+  const branchMatches = Boolean(live && live.branch === site.branch);
+  const commitMatches = Boolean(live && sameCommit(live.commit_sha, remoteSha));
+  return {
+    branch: site.branch,
+    live: live
+      ? { branch: live.branch, commitSha: live.commit_sha }
+      : null,
+    remoteSha,
+    wouldRedeploy: branchMatches && commitMatches,
+  };
+}
+
+sitesRouter.get('/:id/deploy-check', async (req, res, next) => {
+  try {
+    const site = loadSiteForRequest(req, res);
+    if (!site) return;
+    res.json(await buildDeployCheck(site));
+  } catch (error) {
+    next(error);
   }
-  const deploymentId = enqueueDeployment(site.id, requireUser(req).username);
-  res.status(202).json({ deploymentId });
+});
+
+sitesRouter.post('/:id/deploy', async (req, res, next) => {
+  try {
+    const site = loadSiteForRequest(req, res);
+    if (!site) return;
+    if (!site.enabled) {
+      res.status(409).json({ error: 'This site is disabled.' });
+      return;
+    }
+
+    const force = Boolean((req.body as { force?: unknown } | undefined)?.force);
+    const check = await buildDeployCheck(site);
+    if (check.wouldRedeploy && !force) {
+      res.status(409).json({
+        error:
+          `Branch "${site.branch}" and commit ` +
+          `${check.remoteSha?.slice(0, 7) ?? ''} are already live. ` +
+          'Tick Force deploy to redeploy them anyway.',
+        code: 'ALREADY_LIVE',
+        check,
+      });
+      return;
+    }
+
+    const deploymentId = enqueueDeployment(site.id, requireUser(req).username, {
+      branch: site.branch,
+      redeploy: check.wouldRedeploy,
+    });
+    res.status(202).json({ deploymentId });
+  } catch (error) {
+    next(error);
+  }
 });
 
 sitesRouter.post('/:id/rollback', (req, res) => {

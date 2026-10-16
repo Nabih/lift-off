@@ -241,11 +241,26 @@ export async function listReleases(targetDir: string): Promise<ReleaseInfo[]> {
   }));
 }
 
+/**
+ * The short commit sha encoded in a release directory name. Names are
+ * `<YYYYMMDD>-<HHmmss>-<mmm>-<sha7>`, optionally suffixed with `-N` when two
+ * deploys share a millisecond, so the sha is always the fourth dash-segment.
+ */
+export function releaseNameSha(releaseName: string): string | null {
+  const sha = releaseName.split('-')[3] ?? '';
+  return /^[0-9a-f]{7,40}$/i.test(sha) ? sha : null;
+}
+
+export interface RollbackResult {
+  releaseDir: string;
+  releaseName: string;
+}
+
 /** Points `current` at the release immediately before the active one. */
 export async function rollbackRelease(
   targetDir: string,
   log: BuildLogger,
-): Promise<string> {
+): Promise<RollbackResult> {
   const resolved = validateTargetDir(targetDir);
   const releasesDir = path.join(resolved, 'releases');
   const releases = await sortedReleases(releasesDir);
@@ -260,5 +275,5 @@ export async function rollbackRelease(
 
   log.info(`Rolling back ${path.join(resolved, 'current')} -> releases/${previous}`);
   await swapCurrentSymlink(resolved, previous);
-  return path.join(releasesDir, previous);
+  return { releaseDir: path.join(releasesDir, previous), releaseName: previous };
 }

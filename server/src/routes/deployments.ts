@@ -60,6 +60,7 @@ deploymentsRouter.get('/', (req, res) => {
     deployments: rows.map((row) => ({
       ...toDeploymentDTO(row),
       siteName: row.site_name,
+      repoUrl: row.site_repo_url,
     })),
   });
 });
@@ -67,7 +68,10 @@ deploymentsRouter.get('/', (req, res) => {
 deploymentsRouter.get('/:id', (req, res) => {
   const deployment = loadDeploymentForRequest(req, res);
   if (!deployment) return;
-  res.json(toDeploymentDTO(deployment));
+  res.json({
+    ...toDeploymentDTO(deployment),
+    repoUrl: store.getSite(deployment.site_id)?.repo_url ?? null,
+  });
 });
 
 /** Persisted log lines, for polling or re-rendering history. */

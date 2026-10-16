@@ -17,7 +17,7 @@ Rounds so far: (1) core deploy pipeline, (2) users/roles/owner, (3) PAT auth +
 email password reset, (4) form-time repository validation + script discovery,
 (5) renamed to **Lift-Off** and published publicly, (6) site-side access
 assignment + filtered assignment lists, (7) branch dropdown from the validated
-repository.
+repository, (8) re-deploy detection, forced deploys, and GitHub links.
 
 ---
 
@@ -253,6 +253,46 @@ follow the selection without a second click. The guards that make this safe:
   The list is now only cleared when `repoUrl` / `authType` / `accessToken`
   change, which is the only thing that can make it wrong.
 
+### Round 8 — re-deploy awareness, forced deploys, and GitHub links
+
+Deployments recorded only a commit sha, "Deploy now" fired with no confirmation,
+and nothing said whether a deploy would reproduce exactly what was already live.
+Added branch capture, a pre-deploy check, a forced re-deploy path with a label, and
+GitHub links for the commit and branch.
+
+| Question | Decision |
+| --- | --- |
+| What "live" means | The newest **successful** deployment that recorded a commit |
+| Detecting a no-op deploy | Compare `site.branch` + the remote head (`git ls-remote`) against the live branch + commit |
+| Forcing | `POST /api/sites/:id/deploy { force }`; without it a matching deploy is refused `409` |
+| Label | `deployments.redeploy`, set by the server from the same check |
+| Links | `repoUrl` on the deployment DTO; the web derives GitHub URLs |
+
+**Design calls I made, and why:**
+
+- **The force requirement lives on the server, not only in the dialog.** The UI
+  asks `GET /deploy-check` to decide whether to show the Force tick box, but the
+  deploy endpoint repeats the check. So a direct API call cannot slip past it, and
+  the `re-deployment` label is the server's judgement rather than a client claim.
+- **"Live" is database-derived, and rollbacks record their target commit.** The
+  newest successful deployment with a commit is what serves. A rollback writes the
+  commit it reverted to — recovered from the release name's short sha and mapped
+  back to the full sha and branch via the deployment that produced it — so the check
+  stays correct after a rollback instead of comparing against the superseded release.
+- **A failed remote lookup never blocks a deploy.** If `ls-remote` fails the check
+  reports "not a re-deploy" and the deploy proceeds, failing later with a clearer
+  message if the remote really is unreachable. The check is convenience, not a gate
+  on broken connectivity.
+- **Both branch and commit must match.** Change the site's branch and live `branch`
+  no longer equals `site.branch`, so the next deploy is a normal one even if the
+  commit is unchanged — which is exactly the case a naive commit-only check would
+  get wrong.
+- **The branch link points at the tree at that commit** (`/tree/<sha>`), i.e. what
+  was actually deployed, not the branch's current tip.
+- **Confirmation is always required**, re-deploy or not: the dialog is the only way
+  in, and the check runs while it is open. Re-deploys additionally disable the
+  button until Force is ticked.
+
 ---
 
 ## 3. How it works
@@ -441,6 +481,22 @@ listed"* — the `branches` array the dropdown renders was already covered. The
 change is presentational, so it was verified by typecheck + production build
 rather than a new headless suite; the submit path and `SiteInput.branch` are
 untouched.
+
+**Re-deploy detection + forced deploys** (34 checks, all passing, against a
+dumb-HTTP git fixture that can be pushed to mid-test):
+- the first deploy recorded `branch: master` and the exact head commit, and was
+  not a re-deployment
+- a second deploy with no new commit: `deploy-check` reported the live commit
+  equals the remote head and `wouldRedeploy: true`
+- a plain `POST /deploy` was refused `409 ALREADY_LIVE`; the same request with
+  `force: true` succeeded, re-used the commit, and was labelled `redeploy: true`
+- after a new commit the check flipped to `wouldRedeploy: false` and the deploy
+  went through with no force
+- listings and single-deployment GETs carried `branch` and `repoUrl`
+- a rollback recorded the **earlier** commit (not the one it rolled back from),
+  kept the branch, and `deploy-check` then reported that older commit as live
+- changing the site branch made the next check `wouldRedeploy: false` even with
+  the commit unchanged
 
 **Migrations** (11 checks, all passing):
 - pre-users DB with only a legacy `admin_password_hash`, booted with no

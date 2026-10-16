@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
+import CommitRef from '../components/CommitRef';
 import LogViewer from '../components/LogViewer';
 import StatusBadge from '../components/StatusBadge';
-import { formatDateTime, formatDuration, shortSha } from '../format';
+import { formatDateTime, formatDuration } from '../format';
 import type { Deployment } from '../types';
 
 const TERMINAL = new Set(['success', 'failed', 'cancelled']);
@@ -70,13 +71,15 @@ export default function DeploymentPage() {
             {deployment.kind === 'rollback' && (
               <span className="badge muted">rollback</span>
             )}
+            {deployment.redeploy && (
+              <span className="badge queued">re-deployment</span>
+            )}
           </div>
           <p className="muted small">
             <Link className="link" to={`/sites/${deployment.siteId}`}>
               {deployment.siteName ?? deployment.siteId}
             </Link>{' '}
-            · <span className="mono">{shortSha(deployment.commitSha)}</span>{' '}
-            {deployment.commitMessage ?? ''}
+            · <CommitRef deployment={deployment} messageLength={80} />
           </p>
         </div>
         <Link className="btn ghost" to={`/sites/${deployment.siteId}`}>

@@ -80,16 +80,30 @@ export interface Deployment {
   id: string;
   siteId: string;
   siteName?: string;
+  /** Remote URL of the site, used to link the commit and branch on GitHub. */
+  repoUrl?: string | null;
   kind: DeploymentKind;
   status: DeploymentStatus;
+  branch: string | null;
   commitSha: string | null;
   commitMessage: string | null;
+  /** True when it was forced even though the branch + commit were already live. */
+  redeploy: boolean;
   triggeredBy: string | null;
   error: string | null;
   queuedAt: string;
   startedAt: string | null;
   finishedAt: string | null;
   durationMs: number | null;
+}
+
+/** What a deploy would do, from `GET /api/sites/:id/deploy-check`. */
+export interface DeployCheck {
+  branch: string;
+  live: { branch: string | null; commitSha: string | null } | null;
+  remoteSha: string | null;
+  /** Both the branch and the commit already match what is live. */
+  wouldRedeploy: boolean;
 }
 
 export type LogStream = 'info' | 'stdout' | 'stderr' | 'error' | 'success';

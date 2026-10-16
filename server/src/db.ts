@@ -138,6 +138,10 @@ function ensureColumn(table: string, column: string, definition: string): void {
 ensureColumn('sites', 'access_token', 'TEXT');
 ensureColumn('users', 'email', 'TEXT');
 ensureColumn('users', 'session_version', 'INTEGER NOT NULL DEFAULT 1');
+// The branch a deployment built, and whether it was a forced re-deploy of the
+// branch + commit that was already live.
+ensureColumn('deployments', 'branch', 'TEXT');
+ensureColumn('deployments', 'redeploy', 'INTEGER NOT NULL DEFAULT 0');
 
 // Created after the migration above, since it references users(email).
 db.exec(`

@@ -896,3 +896,57 @@ textarea.input {
   color: var(--success);
   font-weight: 600;
 }
+
+/* -------------------------------------------- deployment commit + branch refs */
+
+.commit-ref {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.commit-ref .branch-ref {
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+a.branch-ref:hover {
+  color: var(--accent-hover);
+  border-color: var(--accent);
+  text-decoration: none;
+}
+
+/* ---------------------------------------------------------------- modal */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(6, 10, 16, 0.66);
+}
+
+.modal {
+  width: 100%;
+  max-width: 440px;
+  margin: 0;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.modal h2 {
+  margin-top: 0;
+}
+
+.modal .form-actions {
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+

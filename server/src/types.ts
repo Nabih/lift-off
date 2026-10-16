@@ -98,8 +98,12 @@ export interface DeploymentRow {
   site_id: string;
   kind: DeploymentKind;
   status: DeploymentStatus;
+  /** Branch the deployment built. Null for rows created before this was recorded. */
+  branch: string | null;
   commit_sha: string | null;
   commit_message: string | null;
+  /** 1 when forced despite the branch + commit already being live. */
+  redeploy: number;
   triggered_by: string | null;
   error: string | null;
   queued_at: string;
@@ -111,10 +115,14 @@ export interface DeploymentDTO {
   id: string;
   siteId: string;
   siteName?: string;
+  /** Remote URL of the site, so the UI can link commits and branches. */
+  repoUrl?: string | null;
   kind: DeploymentKind;
   status: DeploymentStatus;
+  branch: string | null;
   commitSha: string | null;
   commitMessage: string | null;
+  redeploy: boolean;
   triggeredBy: string | null;
   error: string | null;
   queuedAt: string;
@@ -160,8 +168,10 @@ export function toDeploymentDTO(row: DeploymentRow): DeploymentDTO {
     siteId: row.site_id,
     kind: row.kind,
     status: row.status,
+    branch: row.branch ?? null,
     commitSha: row.commit_sha,
     commitMessage: row.commit_message,
+    redeploy: Boolean(row.redeploy),
     triggeredBy: row.triggered_by,
     error: row.error,
     queuedAt: row.queued_at,

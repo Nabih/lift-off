@@ -202,6 +202,26 @@ export async function testConnection(site: SiteRow): Promise<ConnectionTestResul
   }
 }
 
+/**
+ * The commit the branch points at on the remote, or null when it cannot be
+ * reached. Used to tell whether a deploy would just reproduce what is live.
+ */
+export async function resolveRemoteHead(
+  site: GitAuth & { repo_url: string; branch: string },
+): Promise<string | null> {
+  try {
+    const output = await capture(
+      'git',
+      ['ls-remote', site.repo_url, `refs/heads/${site.branch}`],
+      { cwd: process.cwd(), env: buildGitEnv(site), timeoutMs: 30_000 },
+    );
+    const sha = output.split('\n')[0]?.split(/\s+/)[0] ?? '';
+    return /^[0-9a-f]{7,40}$/i.test(sha) ? sha : null;
+  } catch {
+    return null;
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Repository validation + package.json discovery                              */
 /* -------------------------------------------------------------------------- */

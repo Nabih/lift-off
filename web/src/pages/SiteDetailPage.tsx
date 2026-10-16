@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
+import CommitRef from '../components/CommitRef';
 import CopyButton from '../components/CopyButton';
 import StatusBadge from '../components/StatusBadge';
 import { formatDateTime, formatDuration, formatRelative, shortSha } from '../format';
-import type { ConnectionTest, Deployment, Release, Site } from '../types';
+import type { ConnectionTest, DeployCheck, Deployment, Release, Site } from '../types';
+
+/** The pre-deploy confirmation, including whether a force is required. */
+interface DeployDialogState {
+  check: DeployCheck | null;
+  checking: boolean;
+  force: boolean;
+}
 
 export default function SiteDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +27,7 @@ export default function SiteDetailPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deployDialog, setDeployDialog] = useState<DeployDialogState | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -62,6 +71,45 @@ export default function SiteDetailPage() {
     } finally {
       setBusy(null);
     }
+  }
+
+  /**
+   * A deploy is never immediate: this always opens a confirmation. It asks the
+   * server whether the branch and commit are already live so it can require a
+   * deliberate force before re-deploying them.
+   */
+  async function openDeployDialog() {
+    if (!site) return;
+    setDeployDialog({ check: null, checking: true, force: false });
+    let check: DeployCheck | null = null;
+    try {
+      check = await api.deployCheck(site.id);
+    } catch {
+      // The check needs the network. If it fails we still confirm; the deploy
+      // endpoint re-checks and rejects an accidental re-deploy with a clear
+      // message rather than silently blocking.
+    }
+    setDeployDialog({ check, checking: false, force: false });
+  }
+
+  async function confirmDeploy() {
+    if (!site || !deployDialog) return;
+    const { force } = deployDialog;
+    await run('deploy', async () => {
+      try {
+        const { deploymentId } = await api.deploySite(site.id, force);
+        setDeployDialog(null);
+        navigate(`/deployments/${deploymentId}`);
+      } catch (err) {
+        // A 409 means it turned out to be a re-deploy (e.g. the check was
+        // stale). Keep the dialog open and surface the force option.
+        if (err instanceof ApiError && err.status === 409) {
+          const check = await api.deployCheck(site.id).catch(() => null);
+          setDeployDialog({ check, checking: false, force: false });
+        }
+        throw err;
+      }
+    });
   }
 
   if (loading) return <div className="page muted">Loading…</div>;
@@ -111,14 +159,9 @@ export default function SiteDetailPage() {
             className="btn primary"
             type="button"
             disabled={!site.enabled || busy !== null}
-            onClick={() =>
-              void run('deploy', async () => {
-                const { deploymentId } = await api.deploySite(site.id);
-                navigate(`/deployments/${deploymentId}`);
-              })
-            }
+            onClick={() => void openDeployDialog()}
           >
-            {busy === 'deploy' ? 'Starting…' : 'Deploy now'}
+            Deploy now
           </button>
         </div>
       </header>
@@ -314,12 +357,12 @@ export default function SiteDetailPage() {
                     {deployment.kind === 'rollback' && (
                       <span className="badge muted">rollback</span>
                     )}
+                    {deployment.redeploy && (
+                      <span className="badge queued">re-deployment</span>
+                    )}
                   </td>
-                  <td className="mono small">
-                    {shortSha(deployment.commitSha)}{' '}
-                    <span className="muted">
-                      {deployment.commitMessage?.slice(0, 48) ?? ''}
-                    </span>
+                  <td className="small">
+                    <CommitRef deployment={deployment} />
                   </td>
                   <td className="small" title={formatDateTime(deployment.queuedAt)}>
                     {formatRelative(deployment.queuedAt)}
@@ -360,6 +403,102 @@ export default function SiteDetailPage() {
             Delete site
           </button>
         </section>
+      )}
+
+      {deployDialog && (
+        <div
+          className="modal-overlay"
+          role="presentation"
+          onClick={() => {
+            if (busy === null) setDeployDialog(null);
+          }}
+        >
+          <div
+            className="modal card"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Deploy ${site.name}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2>Deploy “{site.name}”?</h2>
+
+            {deployDialog.checking ? (
+              <p className="muted small">Checking the repository…</p>
+            ) : (
+              <dl className="meta-list inline">
+                <div>
+                  <dt>Branch</dt>
+                  <dd className="mono">{site.branch}</dd>
+                </div>
+                <div>
+                  <dt>Remote head</dt>
+                  <dd className="mono" title={deployDialog.check?.remoteSha ?? ''}>
+                    {deployDialog.check?.remoteSha
+                      ? shortSha(deployDialog.check.remoteSha)
+                      : 'unknown'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Live</dt>
+                  <dd className="mono" title={deployDialog.check?.live?.commitSha ?? ''}>
+                    {deployDialog.check?.live?.commitSha
+                      ? shortSha(deployDialog.check.live.commitSha)
+                      : 'nothing yet'}
+                  </dd>
+                </div>
+              </dl>
+            )}
+
+            {deployDialog.check?.wouldRedeploy && (
+              <>
+                <div className="alert warning">
+                  Branch “{site.branch}” at commit{' '}
+                  {shortSha(deployDialog.check.remoteSha)} is already live.
+                </div>
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={deployDialog.force}
+                    onChange={(event) => {
+                      const { checked } = event.target;
+                      setDeployDialog((current) =>
+                        current ? { ...current, force: checked } : current,
+                      );
+                    }}
+                  />
+                  Force deploy (re-deploy the live branch and commit)
+                </label>
+              </>
+            )}
+
+            <div className="form-actions">
+              <button
+                className="btn ghost"
+                type="button"
+                disabled={busy !== null}
+                onClick={() => setDeployDialog(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn primary"
+                type="button"
+                disabled={
+                  busy !== null ||
+                  deployDialog.checking ||
+                  Boolean(deployDialog.check?.wouldRedeploy && !deployDialog.force)
+                }
+                onClick={() => void confirmDeploy()}
+              >
+                {busy === 'deploy'
+                  ? 'Starting…'
+                  : deployDialog.check?.wouldRedeploy
+                    ? 'Force deploy'
+                    : 'Deploy'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
