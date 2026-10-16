@@ -15,7 +15,7 @@ import {
 } from '../git.js';
 import { canAccessSite, firstIssue, isAdmin, requireUser } from '../guards.js';
 import { enqueueDeployment, enqueueRollback } from '../runner.js';
-import { generateSshKeypair } from '../ssh.js';
+import { deriveSshPublicKey, generateSshKeypair } from '../ssh.js';
 import * as store from '../store.js';
 import { toSiteDTO, type AuthType, type SiteDTO, type SiteRow } from '../types.js';
 
@@ -32,6 +32,8 @@ const siteSchema = z.object({
   authType: z.enum(['ssh', 'token', 'none']).default('ssh'),
   /** Personal access token for `authType: 'token'`. Blank on update keeps the stored one. */
   accessToken: z.string().trim().max(500).optional(),
+  /** Private SSH key pasted by the admin instead of generating one. */
+  sshPrivateKey: z.string().trim().min(20).max(20000).optional(),
   installCommand: z.string().max(2000).default('npm ci'),
   buildCommand: z.string().max(2000).default('npm run build'),
   distDir: z.string().trim().min(1, 'Output directory is required.').max(500).default('dist'),
@@ -179,11 +181,22 @@ sitesRouter.post('/', async (req, res, next) => {
       return;
     }
 
-    // Every SSH site gets its own keypair; the private half is encrypted at rest.
-    const keypair =
-      data.authType === 'ssh'
-        ? await generateSshKeypair(`liftoff:${data.name}`)
-        : null;
+    // SSH sites get a keypair: either from a key the admin pasted, or generated.
+    // A pasted key plus its derived public half are stored encrypted; this lets
+    // an operator validate the connection with an existing local key instead of
+    // saving first so Lift-Off can generate its own.
+    let sshPrivateKey: string | null = null;
+    let sshPublicKey: string | null = null;
+    if (data.authType === 'ssh') {
+      if (data.sshPrivateKey) {
+        sshPrivateKey = encrypt(data.sshPrivateKey);
+        sshPublicKey = await deriveSshPublicKey(data.sshPrivateKey);
+      } else {
+        const keypair = await generateSshKeypair(`liftoff:${data.name}`);
+        sshPrivateKey = encrypt(keypair.privateKey);
+        sshPublicKey = keypair.publicKey;
+      }
+    }
 
     const now = new Date().toISOString();
     const row: SiteRow = {
@@ -192,8 +205,8 @@ sitesRouter.post('/', async (req, res, next) => {
       repo_url: data.repoUrl,
       branch: data.branch,
       auth_type: data.authType,
-      ssh_private_key: keypair ? encrypt(keypair.privateKey) : null,
-      ssh_public_key: keypair ? keypair.publicKey : null,
+      ssh_private_key: sshPrivateKey,
+      ssh_public_key: sshPublicKey,
       access_token: data.accessToken ? encrypt(data.accessToken) : null,
       install_command: data.installCommand,
       build_command: data.buildCommand,
@@ -267,9 +280,13 @@ sitesRouter.patch('/:id', async (req, res, next) => {
     // without ever holding the secret.
     if (data.accessToken) patch.access_token = encrypt(data.accessToken);
 
-    // Switching to SSH on a keyless site provisions a key on the spot.
-    const switchingToSsh = data.authType === 'ssh' && !existing.ssh_private_key;
-    if (switchingToSsh) {
+    // Replace the key when:
+    //  - switching to SSH without one stored, or
+    //  - a new private key was pasted (overrides even an existing one).
+    if (data.sshPrivateKey) {
+      patch.ssh_private_key = encrypt(data.sshPrivateKey);
+      patch.ssh_public_key = await deriveSshPublicKey(data.sshPrivateKey);
+    } else if (data.authType === 'ssh' && !existing.ssh_private_key) {
       const keypair = await generateSshKeypair(
         `liftoff:${data.name ?? existing.name}`,
       );
@@ -376,6 +393,7 @@ const validateSchema = z.object({
   branch: z.string().trim().min(1, 'Branch is required.').max(200).default('master'),
   authType: z.enum(['ssh', 'token', 'none']).default('ssh'),
   accessToken: z.string().trim().max(500).optional(),
+  sshPrivateKey: z.string().trim().min(20).max(20000).optional(),
 });
 
 /**
@@ -403,7 +421,9 @@ sitesRouter.post('/validate', async (req, res, next) => {
     const accessToken = data.accessToken
       ? encrypt(data.accessToken)
       : (existing?.access_token ?? null);
-    const sshPrivateKey = existing?.ssh_private_key ?? null;
+    const sshPrivateKey = data.sshPrivateKey
+      ? encrypt(data.sshPrivateKey)
+      : (existing?.ssh_private_key ?? null);
 
     if (data.authType === 'token' && !accessToken) {
       res.json({

@@ -66,6 +66,8 @@ export interface SiteInput {
   authType: AuthType;
   /** Only sent when the admin types a new token; blank keeps the stored one. */
   accessToken?: string;
+  /** Only sent when the admin pastes a private key instead of generating. */
+  sshPrivateKey?: string;
   installCommand: string;
   buildCommand: string;
   distDir: string;

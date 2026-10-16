@@ -17,6 +17,7 @@ const DEFAULTS: SiteInput = {
   branch: 'master',
   authType: 'ssh',
   accessToken: '',
+  sshPrivateKey: '',
   installCommand: 'npm ci',
   buildCommand: 'npm run build',
   distDir: 'dist',
@@ -156,14 +157,15 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
       key === 'repoUrl' ||
       key === 'branch' ||
       key === 'authType' ||
-      key === 'accessToken'
+      key === 'accessToken' ||
+      key === 'sshPrivateKey'
     ) {
       setValidation(null);
       setValidateError(null);
     }
     // The branch list describes a repository, so only changes that could point
     // at a different one invalidate it — changing the branch itself does not.
-    if (key === 'repoUrl' || key === 'authType' || key === 'accessToken') {
+    if (key === 'repoUrl' || key === 'authType' || key === 'accessToken' || key === 'sshPrivateKey') {
       setRepoBranches([]);
     }
   }
@@ -174,7 +176,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
     (form.authType === 'none' ||
       (form.authType === 'token' &&
         (Boolean(form.accessToken) || hasAccessToken)) ||
-      (form.authType === 'ssh' && hasSshKey));
+      (form.authType === 'ssh' && (hasSshKey || Boolean(form.sshPrivateKey))));
 
   async function validateConnection(branchOverride?: string) {
     const requestId = (validateRequest.current += 1);
@@ -188,6 +190,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
         branch: branchOverride ?? form.branch,
         authType: form.authType,
         accessToken: form.accessToken || undefined,
+        sshPrivateKey: form.sshPrivateKey || undefined,
       });
       if (requestId !== validateRequest.current) return;
       setValidation(result);
@@ -414,6 +417,26 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                   {hasAccessToken
                     ? 'A token is already stored. Type a new one only to replace it.'
                     : 'Read-only access to the repository is enough.'}
+                </small>
+              </label>
+            )}
+
+            {form.authType === 'ssh' && (
+              <label className="field">
+                <span>SSH private key (optional)</span>
+                <textarea
+                  className="input mono key-box"
+                  autoComplete="off"
+                  spellCheck={false}
+                  rows={5}
+                  value={form.sshPrivateKey ?? ''}
+                  placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;…&#10;-----END OPENSSH PRIVATE KEY-----"
+                  onChange={(event) => set('sshPrivateKey', event.target.value)}
+                />
+                <small className="hint">
+                  {hasSshKey
+                    ? 'A keypair is already stored for this site, used unless you paste one above to replace it.'
+                    : 'Paste an existing private key to validate and save with it. Leave blank and the server generates one for you instead.'}
                 </small>
               </label>
             )}

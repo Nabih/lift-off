@@ -146,6 +146,7 @@ export const api = {
     branch: string;
     authType: AuthType;
     accessToken?: string;
+    sshPrivateKey?: string;
   }) => request<ConnectionTest>('/api/sites/validate', { method: 'POST', body: input }),
   deploySite: (
     id: string,
