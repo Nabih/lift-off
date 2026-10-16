@@ -108,7 +108,43 @@ export function enqueueRollback(
  *
  * Fire-and-forget: a slow or broken SMTP server must never delay the next build.
  */
+/** Errors worth retrying: flaky DNS / refused / timed-out SMTP hops. */
+function isTransientMailError(error: unknown): boolean {
+  const code = (error as { code?: string })?.code ?? '';
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EDNS', 'ESOCKET'].includes(code) ||
+    /timeout|timed out|ECONNRESET|socket hang up|network|ENOTFOUND/i.test(message)
+  );
+}
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+/** Sends with a short retry, since a single DNS hiccup should not lose the mail. */
+async function sendWithRetry(
+  config: Parameters<typeof sendDeploymentFinishedEmail>[0],
+  deployment: Parameters<typeof sendDeploymentFinishedEmail>[1],
+  attempts = 3,
+): Promise<void> {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await sendDeploymentFinishedEmail(config, deployment);
+      return;
+    } catch (error) {
+      const last = attempt === attempts;
+      if (last || !isTransientMailError(error)) throw error;
+      await sleep(attempt * 1000);
+    }
+  }
+}
+
 function notifyDeploymentFinished(deploymentId: string): void {
+  // Record the outcome in the deployment's log so a missing email is visible in
+  // the UI, not just in the server console.
+  const log = createBuildLogger(deploymentId);
   try {
     const config = getMailConfig();
     if (!config) return;
@@ -131,7 +167,7 @@ function notifyDeploymentFinished(deploymentId: string): void {
         ? finished - started
         : null;
 
-    void sendDeploymentFinishedEmail(config, {
+    void sendWithRetry(config, {
       siteName: getSite(deployment.site_id)?.name ?? deployment.site_id,
       status,
       branch: deployment.branch,
@@ -140,17 +176,21 @@ function notifyDeploymentFinished(deploymentId: string): void {
       triggeredBy: deployment.triggered_by,
       error: deployment.error,
       durationMs,
-    }).catch((error: unknown) => {
-      console.error(
-        '[liftoff] Could not send the deployment notification:',
-        error instanceof Error ? error.message : error,
-      );
-    });
+    })
+      .then(() => {
+        log.success(`Notification email sent to ${config.notifyEmail}`);
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        log.error(`Could not send the notification email: ${message}`);
+        console.error('[liftoff] Could not send the deployment notification:', message);
+      });
   } catch (error) {
-    console.error(
-      '[liftoff] Could not send the deployment notification:',
-      error instanceof Error ? error.message : error,
+    const message = error instanceof Error ? error.message : String(error);
+    createBuildLogger(deploymentId).error(
+      `Could not send the notification email: ${message}`,
     );
+    console.error('[liftoff] Could not send the deployment notification:', message);
   }
 }
 

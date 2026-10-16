@@ -17,7 +17,13 @@ export interface BuildLogger {
  * the disk.
  */
 export function createBuildLogger(deploymentId: string): BuildLogger {
-  let seq = 1;
+  // Continue after whatever is already stored, so a second logger for the same
+  // deployment (e.g. one reporting the result of the notification email) appends
+  // instead of re-using sequence numbers.
+  const existing = db
+    .prepare('SELECT MAX(seq) AS max FROM deployment_logs WHERE deployment_id = ?')
+    .get(deploymentId) as unknown as { max: number | null };
+  let seq = (existing?.max ?? 0) + 1;
   const insert = db.prepare(
     `INSERT INTO deployment_logs (deployment_id, seq, ts, stream, line)
      VALUES (?, ?, ?, ?, ?)`,
