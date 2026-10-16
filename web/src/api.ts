@@ -60,6 +60,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 export const api = {
   // ---- auth -------------------------------------------------------------
+  setupStatus: () => request<{ needsSetup: boolean }>('/api/auth/setup-status'),
+  bootstrap: (input: { username: string; password: string; email?: string }) =>
+    request<{ ok: boolean; user: AuthUser; usingGeneratedPassword: boolean }>(
+      '/api/auth/bootstrap',
+      { method: 'POST', body: input },
+    ),
   login: (username: string, password: string) =>
     request<{ ok: boolean; user: AuthUser; usingGeneratedPassword: boolean }>(
       '/api/auth/login',

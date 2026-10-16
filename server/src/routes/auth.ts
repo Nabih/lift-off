@@ -2,9 +2,11 @@ import { Router } from 'express';
 import { z } from 'zod';
 import {
   authenticate,
+  bootstrapOwner,
   clearSession,
   isUsingGeneratedPassword,
   issueSession,
+  needsSetup,
   requireAuth,
   setUserPassword,
   verifyUserPassword,
@@ -49,6 +51,63 @@ const resetPasswordSchema = z.object({
 /** Wording reused everywhere so the response never hints at account existence. */
 const GENERIC_RESET_MESSAGE =
   'If that account exists and has an email address on file, a reset link is on its way. Check your inbox and spam folder.';
+
+const bootstrapSchema = z.object({
+  username: z.string().trim().min(3, 'Use at least 3 characters.').max(80),
+  password: z.string().min(10, 'Use at least 10 characters.').max(200),
+  email: z.union([emailSchema, z.literal('')]).optional(),
+});
+
+authRouter.get('/setup-status', (_req, res) => {
+  res.json({ needsSetup: needsSetup() });
+});
+
+authRouter.post('/bootstrap', (req, res) => {
+  if (!needsSetup()) {
+    res.status(410).json({ error: 'Setup already completed. Sign in instead.' });
+    return;
+  }
+  const ip = req.ip ?? 'unknown';
+  if (!allow(`bootstrap:ip:${ip}`, 5, 15 * 60 * 1000)) {
+    res.status(429).json({ error: 'Too many attempts. Try again in a few minutes.' });
+    return;
+  }
+
+  const parsed = bootstrapSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed.error) });
+    return;
+  }
+
+  const username = parsed.data.username;
+  const clash = store.getUserByUsername(username);
+  if (clash) {
+    // Shouldn't happen on a fresh install, but don't leak which accounts exist.
+    res.status(409).json({ error: 'That username is already in use.' });
+    return;
+  }
+
+  const email = parsed.data.email ? parsed.data.email.toLowerCase() : null;
+  if (email) {
+    const emailClash = store.getUserByEmail(email);
+    if (emailClash) {
+      res.status(409).json({ error: 'That email address is already in use.' });
+      return;
+    }
+  }
+
+  const row = bootstrapOwner({
+    username,
+    password: parsed.data.password,
+    email,
+  });
+  issueSession(res, row);
+  res.status(201).json({
+    ok: true,
+    user: userDTO(row),
+    usingGeneratedPassword: false,
+  });
+});
 
 authRouter.post('/login', (req, res) => {
   const parsed = loginSchema.safeParse(req.body);

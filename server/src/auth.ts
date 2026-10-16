@@ -48,6 +48,33 @@ function printGeneratedPassword(password: string): void {
  * Upgrades from the single-password version keep working: the old hash is
  * moved onto the owner account, so nobody is locked out.
  */
+
+export function needsSetup(): boolean {
+  return store.countUsers() === 0;
+}
+
+export function bootstrapOwner(input: {
+  username: string;
+  password: string;
+  email: string | null;
+}): UserRow {
+  const row: UserRow = {
+    id: randomId('user'),
+    username: input.username,
+    password_hash: hashPassword(input.password),
+    email: input.email,
+    role: 'admin',
+    is_owner: 1,
+    disabled: 0,
+    session_version: 1,
+    created_at: new Date().toISOString(),
+    created_by: null,
+    last_login_at: null,
+  };
+  store.insertUser(row);
+  return row;
+}
+
 export function initAuth(): void {
   if (!getSetting(SECRET_KEY)) {
     setSetting(SECRET_KEY, randomToken(32));
@@ -58,44 +85,51 @@ export function initAuth(): void {
   const legacyHash = getSetting(LEGACY_HASH_KEY);
   const environmentPassword = process.env.LIFTOFF_ADMIN_PASSWORD;
 
-  let passwordHash: string;
-  let generated = false;
+  // Bootstrap non-interactively only when explicitly asked to: a legacy hash
+  // (from the pre-users version) or an explicit LIFTOFF_ADMIN_PASSWORD. This
+  // keeps a plaintext password out of the default setup flow — fresh installs
+  // are provisioned through the first-run wizard in the UI (or `npm run
+  // seed:admin`), so nothing secret has to live in .env or the README.
+  if (legacyHash || environmentPassword) {
+    let passwordHash: string;
+    let generated = false;
 
-  if (legacyHash) {
-    passwordHash = legacyHash;
-    generated = getSetting(GENERATED_FLAG) === '1';
-  } else if (environmentPassword) {
-    passwordHash = hashPassword(environmentPassword);
-  } else {
-    const generatedPassword = randomToken(9);
-    passwordHash = hashPassword(generatedPassword);
-    generated = true;
-    printGeneratedPassword(generatedPassword);
+    if (legacyHash) {
+      passwordHash = legacyHash;
+      generated = getSetting(GENERATED_FLAG) === '1';
+    } else {
+      passwordHash = hashPassword(environmentPassword as string);
+    }
+
+    const username =
+      (process.env.LIFTOFF_ADMIN_USERNAME ?? 'admin').trim() || 'admin';
+
+    store.insertUser({
+      id: randomId('user'),
+      username,
+      password_hash: passwordHash,
+      email: null,
+      role: 'admin',
+      is_owner: 1,
+      disabled: 0,
+      session_version: 1,
+      created_at: new Date().toISOString(),
+      created_by: null,
+      last_login_at: null,
+    });
+    setSetting(GENERATED_FLAG, generated ? '1' : '0');
+
+    console.log(
+      `[liftoff] Owner account "${username}" created${
+        legacyHash ? ' (migrated existing admin password)' : ''
+      }.`,
+    );
+    return;
   }
 
-  const username =
-    (process.env.LIFTOFF_ADMIN_USERNAME ?? 'admin').trim() || 'admin';
-
-  store.insertUser({
-    id: randomId('user'),
-    username,
-    password_hash: passwordHash,
-    email: null,
-    role: 'admin',
-    is_owner: 1,
-    disabled: 0,
-    session_version: 1,
-    created_at: new Date().toISOString(),
-    created_by: null,
-    last_login_at: null,
-  });
-  setSetting(GENERATED_FLAG, generated ? '1' : '0');
-
-  console.log(
-    `[liftoff] Owner account "${username}" created${
-      legacyHash ? ' (migrated existing admin password)' : ''
-    }.`,
-  );
+  console.log('[liftoff] No owner account exists yet.');
+  console.log('[liftoff] Open the UI to complete first-run setup, or set LIFTOFF_ADMIN_PASSWORD to bootstrap non-interactively.');
+  console.log('[liftoff] (CLI: `npm run seed:admin`.)');
 }
 
 function jwtSecret(): string {

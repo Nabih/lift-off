@@ -16,7 +16,8 @@
     "dev:web": "npm --workspace web run dev",
     "build": "npm --workspace web run build && npm --workspace server run build",
     "start": "npm --workspace server run start",
-    "typecheck": "npm --workspace server run typecheck && npm --workspace web run typecheck"
+    "typecheck": "npm --workspace server run typecheck && npm --workspace web run typecheck",
+    "seed:admin": "npm --workspace server run seed:admin"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

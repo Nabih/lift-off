@@ -53,16 +53,17 @@ npm run dev
 - UI: <http://localhost:5173> (Vite dev server, proxies `/api` to the backend)
 - API: <http://localhost:4000>
 
-On first boot the server prints a generated admin password:
+On first boot, if no owner account exists yet, Lift-Off does **not** create one
+with a plaintext password in a config file. Instead it serves a **first-run setup**
+screen: open the UI, create the owner account (username, password, optional email),
+and you are signed in immediately. No secret ever has to live in `.env`.
 
-```
-  ┌──────────────────────────────────────────────────────────┐
-  │  Lift-Off generated an admin password (change it soon):    │
-  │      a1b2c3d4e5f6a7b8                                      │
-  └──────────────────────────────────────────────────────────┘
-```
+For headless or automated installs you can still bootstrap non-interactively:
 
-Set `LIFTOFF_ADMIN_PASSWORD` to skip that and choose your own.
+- Set `LIFTOFF_ADMIN_PASSWORD` (and optionally `LIFTOFF_ADMIN_USERNAME`) before
+  starting — the server creates the owner on boot and skips the wizard.
+- Or run `npm run seed:admin`, which prompts for the same fields and only works
+  on a fresh install (it refuses if any account already exists).
 
 ---
 
@@ -74,7 +75,10 @@ npm install
 npm run build            # builds web/dist and server/dist
 
 # 2. Configure
-cp .env.example .env     # then edit: set LIFTOFF_ADMIN_PASSWORD, LIFTOFF_SECRET_KEY
+cp .env.example .env     # then edit: set LIFTOFF_SECRET_KEY (optional).
+                         # No admin password needed — the first-run wizard creates
+                         # the owner. For headless boxes: set LIFTOFF_ADMIN_PASSWORD
+                         # instead, or run `npm run seed:admin`.
 
 # 3. Run under pm2
 sudo npm install -g pm2
@@ -385,8 +389,9 @@ password for any account from **Users → Edit → New password**.
 | `PORT` | `4000` | HTTP port. |
 | `LIFTOFF_DATA_DIR` | `./data` | Database, deploy keys, cloned repos. |
 | `LIFTOFF_SECRET_KEY` | generated file | 32 bytes (64 hex chars or base64) for encrypting secrets at rest. |
-| `LIFTOFF_ADMIN_PASSWORD` | generated | Password for the owner account on first boot. |
-| `LIFTOFF_ADMIN_USERNAME` | `admin` | Username for the owner account on first boot. |
+| `LIFTOFF_ADMIN_PASSWORD` | (none) | Optional. When set, creates the owner account on first boot instead of using the first-run wizard. |
+| `LIFTOFF_ADMIN_USERNAME` | `admin` | Username used together with `LIFTOFF_ADMIN_PASSWORD`. |
+| `npm run seed:admin` | n/a | Interactive CLI that creates the owner account on a fresh install; refuses if one exists. |
 | `LIFTOFF_COOKIE_SECURE` | `false` | Set `true` when serving over HTTPS. |
 | `LIFTOFF_MAX_CONCURRENT_BUILDS` | `1` | Parallel builds. |
 | `LIFTOFF_WEB_DIST` | `./web/dist` | Location of the built UI. |
@@ -523,10 +528,11 @@ web/src/
 ## Troubleshooting
 
 **Locked out / lost the owner password** — if email is configured, use
-**Forgot your password?** on the sign-in page. Otherwise stop the server, remove
-the rows from the `users` table (or delete `data/liftoff.db` to start over), set
-`LIFTOFF_ADMIN_PASSWORD`, and restart. A fresh owner account is created on the
-next boot. An admin can also reset any other account's password from **Users**.
+**Forgot your password?** on the sign-in page. There is deliberately no "force
+reset" command, so a stolen SSH session cannot take over an account. As a last
+resort, stop the server, delete `data/liftoff.db` to start over, then use the
+first-run wizard (or `npm run seed:admin`). An admin can also reset any other
+account's password from **Users**.
 
 **"Your password changed. Please sign in again."** — you are signed in with a
 session issued before a password change or reset on your account. This is

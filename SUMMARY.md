@@ -20,7 +20,7 @@ assignment + filtered assignment lists, (7) branch dropdown from the validated
 repository, (8) re-deploy detection, forced deploys, and GitHub links,
 (9) moved the re-deployment label next to the branch and onto the Releases card,
 (10) a refresh button beside the branch dropdown, (11) picking the branch and an
-optional commit in the deploy dialog.
+optional commit in the deploy dialog, (12) first-run setup so no secret lives in `.env`.
 
 ---
 
@@ -493,6 +493,23 @@ Data dir (gitignored): `liftoff.db`, `secret.key`, `keys/`, `workspaces/`.
 
 ---
 
+### Round 12 — first-run account setup (no plaintext password in `.env`)
+
+Fresh installs used to seed an owner from `LIFTOFF_ADMIN_PASSWORD` (plaintext in
+`.env`) or a generated password printed to the logs. That leaks a secret.
+
+| Question | Decision |
+| --- | --- |
+| Default first-run | A web **first-run setup** page, shown only while no account exists |
+| Headless/CI installs | Keep `LIFTOFF_ADMIN_PASSWORD` as an explicit opt-in escape hatch |
+| Scripted/interactive | `npm run seed:admin` — prompts for the same fields, refuses if a user exists |
+| Security | `POST /api/auth/bootstrap` returns `410 Gone` once any account exists; rate-limited by IP |
+
+`initAuth` now returns early without creating anything when no env is provided,
+so the wizard is the default path and no generated password can leak.
+
+---
+
 ## 7. Verification log
 
 Verified with real runs, not mocks.
@@ -597,6 +614,14 @@ dumb-HTTP git fixture that can be pushed to mid-test):
 - a deploy pinned to an older commit built exactly that commit, recorded the chosen
   branch, and was not flagged as a re-deployment; pinning the already-live commit was
   correctly flagged as a re-deploy
+
+**First-run setup** (verified by hand against a fresh DB, plus the existing boot
+path):
+- with zero users, `GET /api/auth/setup-status` returns `{ needsSetup: true }`
+- `POST /api/auth/bootstrap` rejects a short password (validation) and, on a valid
+  request, creates the owner, issues a session, and afterward returns `410 Gone`
+- the CLI `npm run seed:admin` refuses when an account exists; both it and the new
+  endpoints typecheck; the web build still succeeds
 
 **Migrations** (11 checks, all passing):
 - pre-users DB with only a legacy `admin_password_hash`, booted with no
