@@ -184,6 +184,12 @@ sitesRouter.post('/', async (req, res, next) => {
       }
     }
 
+    const nameClash = store.getSiteByName(data.name);
+    if (nameClash) {
+      res.status(409).json({ error: `A site named "${data.name}" already exists.` });
+      return;
+    }
+
     // SSH sites get a keypair: either from a key the admin pasted, or generated.
     // A pasted key plus its derived public half are stored encrypted; this lets
     // an operator validate the connection with an existing local key instead of
@@ -250,6 +256,14 @@ sitesRouter.patch('/:id', async (req, res, next) => {
       return;
     }
     const data = parsed.data;
+
+    if (data.name !== undefined) {
+      const nameClash = store.getSiteByName(data.name);
+      if (nameClash && nameClash.id !== existing.id) {
+        res.status(409).json({ error: `A site named "${data.name}" already exists.` });
+        return;
+      }
+    }
 
     // Validate the *merged* result so partial updates cannot create an invalid
     // combination (e.g. switching auth type without changing the URL). Drafts are

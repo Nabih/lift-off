@@ -29,13 +29,21 @@ export function getSite(id: string): SiteRow | null {
   return (row as unknown as SiteRow) ?? null;
 }
 
+/** Looks up a site by name (case-insensitive) for duplicate-name detection. */
+export function getSiteByName(name: string): SiteRow | null {
+  const row = db
+    .prepare('SELECT * FROM sites WHERE name = ? COLLATE NOCASE')
+    .get(name.trim());
+  return (row as unknown as SiteRow) ?? null;
+}
+
 export function insertSite(site: SiteRow): void {
   db.prepare(
     `INSERT INTO sites (
        id, name, repo_url, branch, auth_type, ssh_private_key, ssh_public_key,
        access_token, install_command, build_command, dist_dir, target_dir,
-       deploy_strategy, keep_releases, env_vars, enabled, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       deploy_strategy, keep_releases, env_vars, enabled, draft, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     site.id,
     site.name,
@@ -53,6 +61,7 @@ export function insertSite(site: SiteRow): void {
     site.keep_releases,
     site.env_vars,
     site.enabled,
+    site.draft,
     site.created_at,
     site.updated_at,
   );
