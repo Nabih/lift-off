@@ -148,6 +148,11 @@ export const api = {
     accessToken?: string;
     sshPrivateKey?: string;
   }) => request<ConnectionTest>('/api/sites/validate', { method: 'POST', body: input }),
+  generateSshKeypair: () =>
+    request<{ privateKey: string; publicKey: string }>(
+      '/api/sites/ssh-keypair',
+      { method: 'POST', body: {} },
+    ),
   deploySite: (
     id: string,
     options: { branch?: string; commit?: string | null; force?: boolean } = {},

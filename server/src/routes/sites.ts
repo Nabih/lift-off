@@ -13,7 +13,7 @@ import {
   testConnection,
   validateRepo,
 } from '../git.js';
-import { canAccessSite, firstIssue, isAdmin, requireUser } from '../guards.js';
+import { canAccessSite, firstIssue, isAdmin, requireAdmin, requireUser } from '../guards.js';
 import { enqueueDeployment, enqueueRollback } from '../runner.js';
 import { deriveSshPublicKey, generateSshKeypair } from '../ssh.js';
 import * as store from '../store.js';
@@ -559,6 +559,16 @@ async function buildDeployCheck(site: SiteRow, input: DeployTargetInput = {}) {
     wouldRedeploy,
   };
 }
+
+sitesRouter.post('/ssh-keypair', requireAdmin, async (req, res, next) => {
+  try {
+    const comment = `liftoff:${String((req.body as { name?: unknown })?.name ?? 'site').trim() || 'site'}`;
+    const keypair = await generateSshKeypair(comment);
+    res.json({ privateKey: keypair.privateKey, publicKey: keypair.publicKey });
+  } catch (error) {
+    next(error);
+  }
+});
 
 sitesRouter.get('/:id/deploy-check', async (req, res, next) => {
   try {

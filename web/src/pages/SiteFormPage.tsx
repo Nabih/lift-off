@@ -72,6 +72,8 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
   const [error, setError] = useState<string | null>(null);
   const [hasAccessToken, setHasAccessToken] = useState(false);
   const [hasSshKey, setHasSshKey] = useState(false);
+  const [sshPublicKeyPreview, setSshPublicKeyPreview] = useState<string | null>(null);
+  const [generatingKey, setGeneratingKey] = useState(false);
   const [validating, setValidating] = useState(false);
   // Increments per validation run so a slow earlier response cannot overwrite a
   // newer one (e.g. switching branches quickly auto-validates several times).
@@ -135,6 +137,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
         });
         setHasAccessToken(site.hasAccessToken);
         setHasSshKey(site.sshPublicKey !== null);
+        setSshPublicKeyPreview(site.sshPublicKey);
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -177,6 +180,23 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
       (form.authType === 'token' &&
         (Boolean(form.accessToken) || hasAccessToken)) ||
       (form.authType === 'ssh' && (hasSshKey || Boolean(form.sshPrivateKey))));
+
+  async function generateSshKey() {
+    setGeneratingKey(true);
+    setError(null);
+    try {
+      const kp = await api.generateSshKeypair();
+      set('sshPrivateKey', kp.privateKey);
+      setSshPublicKeyPreview(kp.publicKey);
+      setValidateError(null);
+      setValidation(null);
+      setRepoBranches([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not generate a key.');
+    } finally {
+      setGeneratingKey(false);
+    }
+  }
 
   async function validateConnection(branchOverride?: string) {
     const requestId = (validateRequest.current += 1);
@@ -431,14 +451,43 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                   spellCheck={false}
                   rows={5}
                   value={form.sshPrivateKey ?? ''}
-                  placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;…&#10;-----END OPENSSH PRIVATE KEY-----"
+                  placeholder="Generate one below, or paste an existing key…"
                   onChange={(event) => set('sshPrivateKey', event.target.value)}
                 />
                 <small className="hint">
-                  {hasSshKey
-                    ? 'A keypair is already stored for this site, used unless you paste one above to replace it.'
-                    : 'Paste an existing private key to validate and save with it. Leave blank and the server generates one for you instead.'}
+                  {hasSshKey && !form.sshPrivateKey
+                    ? 'A keypair is already stored for this site. Paste one above to replace it, or leave blank to keep using it.'
+                    : form.sshPrivateKey
+                      ? 'This key will be saved and used for validation and deploy.'
+                      : 'Paste an existing key, or generate a fresh keypair below to test without saving first.'}
                 </small>
+
+                {sshPublicKeyPreview && !form.sshPrivateKey && (
+                  <>
+                    <span className="hint-label">Public key (add this to GitHub → Settings → Deploy keys)</span>
+                    <textarea
+                      className="input mono key-box"
+                      readOnly
+                      rows={3}
+                      value={sshPublicKeyPreview}
+                    />
+                  </>
+                )}
+
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={generatingKey || validating}
+                    onClick={() => void generateSshKey()}
+                  >
+                    {generatingKey ? 'Generating…' : sshPublicKeyPreview ? 'Regenerate keypair' : 'Generate keypair'}
+                  </button>
+                  <span className="muted small">
+                    Generates a keypair in the browser’s request and shows its
+                    public half so you can test before saving.
+                  </span>
+                </div>
               </label>
             )}
 
