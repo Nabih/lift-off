@@ -5,8 +5,8 @@ import type { DeploymentRow, LogLine, SiteRow, UserRow } from './types.js';
 /* Sites                                                                       */
 /* -------------------------------------------------------------------------- */
 
-export function listSites(includeDeleted = false): SiteRow[] {
-  const where = includeDeleted ? '' : 'WHERE deleted_at IS NULL';
+export function listSites(deletedOnly = false): SiteRow[] {
+  const where = deletedOnly ? 'WHERE deleted_at IS NOT NULL' : 'WHERE deleted_at IS NULL';
   return db
     .prepare(`SELECT * FROM sites ${where} ORDER BY name COLLATE NOCASE`)
     .all() as unknown as SiteRow[];
@@ -16,15 +16,18 @@ export function listSites(includeDeleted = false): SiteRow[] {
 export function listSitesForUser(
   userId: string,
   isAdmin: boolean,
-  includeDeleted = false,
+  deletedOnly = false,
 ): SiteRow[] {
-  if (isAdmin) return listSites(includeDeleted);
-  const clause = includeDeleted ? '' : 'AND s.deleted_at IS NULL';
+  if (isAdmin) return listSites(deletedOnly);
+  if (deletedOnly) {
+    // Deployers don't otherwise see archived sites; return their (non-existent) archived assignments.
+    return [];
+  }
   return db
     .prepare(
       `SELECT s.* FROM sites s
        JOIN user_sites us ON us.site_id = s.id
-       WHERE us.user_id = ? ${clause}
+       WHERE us.user_id = ? AND s.deleted_at IS NULL
        ORDER BY s.name COLLATE NOCASE`,
     )
     .all(userId) as unknown as SiteRow[];
@@ -62,8 +65,8 @@ export function insertSite(site: SiteRow): void {
     `INSERT INTO sites (
        id, name, repo_url, branch, auth_type, ssh_private_key, ssh_public_key,
        access_token, install_command, build_command, dist_dir, target_dir,
-       deploy_strategy, keep_releases, env_vars, enabled, draft, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       deploy_strategy, keep_releases, env_vars, enabled, draft, created_by, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     site.id,
     site.name,
@@ -82,6 +85,7 @@ export function insertSite(site: SiteRow): void {
     site.env_vars,
     site.enabled,
     site.draft,
+    site.created_by,
     site.created_at,
     site.updated_at,
   );

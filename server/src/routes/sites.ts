@@ -234,6 +234,7 @@ sitesRouter.post('/', async (req, res, next) => {
       enabled: data.enabled ? 1 : 0,
       draft: data.draft ? 1 : 0,
       deleted_at: null,
+      created_by: requireUser(req).username,
       created_at: now,
       updated_at: now,
     };

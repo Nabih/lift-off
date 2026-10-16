@@ -104,6 +104,11 @@ export default function SiteDetailPage() {
               Edit
             </Link>
           )}
+          {isAdmin && (
+            <Link className="btn ghost" to="/sites/archived">
+              Archived sites
+            </Link>
+          )}
           {site.deployStrategy === 'releases' && (
             <button
               className="btn ghost"
@@ -133,6 +138,27 @@ export default function SiteDetailPage() {
 
       {error && <div className="alert error">{error}</div>}
 
+      {site.archived && (
+        <div className="alert warning">
+          This site is archived and cannot be deployed.{' '}
+          {isAdmin && (
+            <button
+              type="button"
+              className="btn primary small"
+              disabled={busy !== null}
+              onClick={() =>
+                void run('restore', async () => {
+                  await api.restoreSite(site.id);
+                  await load();
+                })
+              }
+            >
+              {busy === 'restore' ? 'Restoring…' : 'Restore site'}
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="detail-grid">
         <section className="card">
           <h2>Configuration</h2>
@@ -141,6 +167,12 @@ export default function SiteDetailPage() {
               <dt>Branch</dt>
               <dd className="mono">{site.branch}</dd>
             </div>
+            {site.createdBy && (
+              <div>
+                <dt>Created by</dt>
+                <dd className="mono">{site.createdBy}</dd>
+              </div>
+            )}
             <div>
               <dt>Install</dt>
               <dd className="mono">{site.installCommand || '—'}</dd>

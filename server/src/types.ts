@@ -68,6 +68,7 @@ export interface SiteRow {
   env_vars: string;
   enabled: number;
   draft: number;
+  created_by: string | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -93,6 +94,7 @@ export interface SiteDTO {
   enabled: boolean;
   draft: boolean;
   archived: boolean;
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -163,6 +165,7 @@ export function toSiteDTO(row: SiteRow): SiteDTO {
     enabled: Boolean(row.enabled),
     draft: Boolean(row.draft),
     archived: Boolean(row.deleted_at),
+    createdBy: row.created_by ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

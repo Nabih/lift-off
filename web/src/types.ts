@@ -57,7 +57,7 @@ export interface Site {
   enabled: boolean;
   draft: boolean;
   archived: boolean;
-  deleted: boolean;
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
 }
