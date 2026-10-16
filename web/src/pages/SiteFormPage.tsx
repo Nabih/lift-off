@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import CheckboxList from '../components/CheckboxList';
@@ -51,6 +51,9 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
   const [hasAccessToken, setHasAccessToken] = useState(false);
   const [hasSshKey, setHasSshKey] = useState(false);
   const [validating, setValidating] = useState(false);
+  // Increments per validation run so a slow earlier response cannot overwrite a
+  // newer one (e.g. switching branches quickly auto-validates several times).
+  const validateRequest = useRef(0);
   const [validation, setValidation] = useState<ConnectionTest | null>(null);
   // Branches discovered by validation. Kept apart from `validation` because it
   // belongs to the repository, not the selected branch: picking a different
@@ -152,7 +155,8 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
         (Boolean(form.accessToken) || hasAccessToken)) ||
       (form.authType === 'ssh' && hasSshKey));
 
-  async function validateConnection() {
+  async function validateConnection(branchOverride?: string) {
+    const requestId = (validateRequest.current += 1);
     setValidating(true);
     setValidation(null);
     setValidateError(null);
@@ -160,22 +164,35 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
       const result = await api.validateSite({
         siteId: id,
         repoUrl: form.repoUrl,
-        branch: form.branch,
+        branch: branchOverride ?? form.branch,
         authType: form.authType,
         accessToken: form.accessToken || undefined,
       });
+      if (requestId !== validateRequest.current) return;
       setValidation(result);
       // Populates the branch dropdown; an empty list falls back to free text.
       setRepoBranches(result.branches);
     } catch (err) {
+      if (requestId !== validateRequest.current) return;
       setValidation(null);
-      setRepoBranches([]);
+      // Keep the last known branch list: a failed check (e.g. a transient
+      // network error while auto-validating) should not take the dropdown away.
       setValidateError(
         err instanceof Error ? err.message : 'Could not validate the connection.',
       );
     } finally {
-      setValidating(false);
+      if (requestId === validateRequest.current) setValidating(false);
     }
+  }
+
+  /**
+   * Re-checks the connection after the branch is picked from the dropdown.
+   * Only the dropdown triggers this — the free-text fallback does not, so
+   * typing a branch name never fires a request per keystroke.
+   */
+  function onBranchPicked(branch: string) {
+    set('branch', branch);
+    if (canValidate) void validateConnection(branch);
   }
 
   async function submit(event: FormEvent) {
@@ -346,7 +363,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                     className="input mono"
                     value={form.branch}
                     required
-                    onChange={(event) => set('branch', event.target.value)}
+                    onChange={(event) => onBranchPicked(event.target.value)}
                   >
                     {!repoBranches.includes(form.branch) && (
                       <option value={form.branch}>
@@ -362,6 +379,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                   <small className="hint">
                     {repoBranches.length} branch
                     {repoBranches.length === 1 ? '' : 'es'} found on the remote.
+                    Picking one re-checks the connection.
                   </small>
                 </>
               ) : (

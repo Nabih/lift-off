@@ -237,6 +237,22 @@ validate is disabled until SSH sites are saved, and that reason is only obvious
 next to the auth control. Repository order is now: name → URL → auth (+validate)
 → token → branch.
 
+**Picking a branch re-checks automatically.** Choosing a branch from the dropdown
+fires the same validation with that branch, so the script list and the badge
+follow the selection without a second click. The guards that make this safe:
+
+- **Only the dropdown triggers it.** The free-text fallback does not, because
+  auto-checking on every keystroke would fire a request per character.
+- **A monotonic request id.** Each run takes the next id and only applies its
+  result if it is still the newest, so switching branches quickly cannot let a
+  slow earlier response overwrite the newer one; `validating` is likewise only
+  cleared by the winning request.
+- **A failed auto-check no longer empties the branch list.** The old catch
+  cleared it (fine on the manual path, where the list was just re-fetched), but
+  on the auto path a transient error would make the dropdown vanish mid-edit.
+  The list is now only cleared when `repoUrl` / `authType` / `accessToken`
+  change, which is the only thing that can make it wrong.
+
 ---
 
 ## 3. How it works

@@ -191,6 +191,10 @@ guessing what its scripts are called.
   repository's branches. If the check returns no branches (unreachable repository,
   or a host that does not list them), the box stays a free-text field so you can
   still type a branch name.
+- Picking a different branch from the dropdown **re-runs the check automatically**,
+  so the scripts and the connection badge follow the branch you selected. Typing
+  in the free-text field does not auto-check (that would fire a request per
+  keystroke); use the button.
 - Scripts are shown from the branch's `package.json` (e.g. `npm run build`,
   adjusted for a declared package manager such as pnpm or yarn), but nothing from
   the repository is executed by the check.
