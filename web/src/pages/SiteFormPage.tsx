@@ -27,6 +27,27 @@ const DEFAULTS: SiteInput = {
   enabled: true,
 };
 
+/** Small refresh glyph for the "reload branches" button. */
+function RefreshIcon({ spinning }: { spinning: boolean }) {
+  return (
+    <svg
+      className={spinning ? 'spin' : undefined}
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="23 4 23 10 17 10" />
+      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+    </svg>
+  );
+}
+
 /** How a discovered script would be run with the repo's package manager. */
 function runLabel(packageManager: string | null, scriptName: string): string {
   switch (packageManager) {
@@ -357,8 +378,8 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
 
             <label className="field">
               <span>Branch</span>
-              {repoBranches.length > 0 ? (
-                <>
+              <div className="field-row">
+                {repoBranches.length > 0 ? (
                   <select
                     className="input mono"
                     value={form.branch}
@@ -376,14 +397,7 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                       </option>
                     ))}
                   </select>
-                  <small className="hint">
-                    {repoBranches.length} branch
-                    {repoBranches.length === 1 ? '' : 'es'} found on the remote.
-                    Picking one re-checks the connection.
-                  </small>
-                </>
-              ) : (
-                <>
+                ) : (
                   <input
                     className="input mono"
                     value={form.branch}
@@ -391,11 +405,25 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                     placeholder="master"
                     onChange={(event) => set('branch', event.target.value)}
                   />
-                  <small className="hint">
-                    Validate the connection to load this repository's branches.
-                  </small>
-                </>
-              )}
+                )}
+                <button
+                  className="btn icon"
+                  type="button"
+                  title="Reload the branch list from the remote"
+                  aria-label="Reload the branch list"
+                  disabled={validating || !canValidate}
+                  onClick={() => void validateConnection()}
+                >
+                  <RefreshIcon spinning={validating} />
+                </button>
+              </div>
+              <small className="hint">
+                {repoBranches.length > 0
+                  ? `${repoBranches.length} branch${
+                      repoBranches.length === 1 ? '' : 'es'
+                    } found on the remote. Picking one re-checks the connection.`
+                  : 'Validate the connection to load this repository\u2019s branches.'}
+              </small>
             </label>
           </section>
 

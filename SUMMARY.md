@@ -18,7 +18,8 @@ email password reset, (4) form-time repository validation + script discovery,
 (5) renamed to **Lift-Off** and published publicly, (6) site-side access
 assignment + filtered assignment lists, (7) branch dropdown from the validated
 repository, (8) re-deploy detection, forced deploys, and GitHub links,
-(9) moved the re-deployment label next to the branch and onto the Releases card.
+(9) moved the re-deployment label next to the branch and onto the Releases card,
+(10) a refresh button beside the branch dropdown.
 
 ---
 
@@ -324,6 +325,19 @@ whichever column it landed in and read as unrelated to the thing it described.
   like a re-deployment — it re-points at an existing release rather than producing
   one.
 
+### Round 10 — refresh button beside the branch dropdown
+
+The branch dropdown only refreshed when something else changed: picking a branch, or
+editing the URL. A branch pushed after the last check could not be picked up without
+re-running validation from the Authentication row instead.
+
+Added a small refresh button inside the **Branch** field, reusing the existing `.btn.icon`
+style (present in the stylesheet but unused until now). It calls the same
+`validateConnection()`, so it re-fetches the branch list and the scripts, shares the
+Validate button's disabled state (`validating || !canValidate`), and spins via a `.spin`
+keyframe while in flight. Purely a second entry point to the existing validate
+endpoint — no server change.
+
 ---
 
 ## 3. How it works
@@ -512,6 +526,10 @@ listed"* — the `branches` array the dropdown renders was already covered. The
 change is presentational, so it was verified by typecheck + production build
 rather than a new headless suite; the submit path and `SiteInput.branch` are
 untouched.
+
+**Branch refresh button** (round 10, UI-only): the same validate endpoint, reached
+from a second button, so the round-4 suite (25 checks) is unchanged and still passes.
+Verified by typecheck + production build and a clean Vite HMR update.
 
 **Re-deploy detection + forced deploys** (37 checks, all passing, against a
 dumb-HTTP git fixture that can be pushed to mid-test):

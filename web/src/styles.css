@@ -612,6 +612,17 @@ textarea.input {
   padding: 6px 9px;
 }
 
+/* Used by the branch "reload" button while a validation is in flight. */
+.spin {
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* -------------------------------------------------------------- badges */
 
 .badge {
