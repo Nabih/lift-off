@@ -38,7 +38,7 @@ export default function DeploymentsPage() {
   // Keep a local copy so typing stays responsive; the URL (and the request)
   // only follow once typing pauses.
   const [searchInput, setSearchInput] = useState(search);
-  const debouncedSearch = useDebounced(searchInput, 100);
+  const debouncedSearch = useDebounced(searchInput, 200);
   const user = searchParams.get('user') ?? '';
   const type = (searchParams.get('type') ?? '') as
     | ''
@@ -101,18 +101,28 @@ export default function DeploymentsPage() {
       setPages(result.pages);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load deployments.');
-    } finally {
-      setLoading(false);
     }
   }, [siteId, search, user, type, orderBy, order, page]);
 
+  // Fetch whenever the user changes a filter, the page, or the scoped site.
   useEffect(() => {
     setLoading(true);
-    void load();
-    // Poll so a running build flips to its final status without a manual reload.
+    void load().finally(() => setLoading(false));
+  }, [load]);
+
+  // Poll only while a deployment on this page is still in flight, so a running
+  // build flips to its final status. Once every row has finished we stop making
+  // requests altogether until something actually changes.
+  const hasActiveDeployments = deployments.some(
+    (deployment) =>
+      deployment.status === 'queued' || deployment.status === 'running',
+  );
+
+  useEffect(() => {
+    if (!hasActiveDeployments) return;
     const timer = window.setInterval(() => void load(), 5000);
     return () => window.clearInterval(timer);
-  }, [load]);
+  }, [hasActiveDeployments, load]);
 
   // Adopt a search that arrived from somewhere else (a shared link, the back
   // button). `pushedSearch` is the last value we wrote, so our own writes do not
