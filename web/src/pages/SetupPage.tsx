@@ -102,9 +102,8 @@ export default function SetupPage() {
         </button>
 
         <p className="muted small">
-          No password is stored anywhere but the database (hashed). Headless or
-          automated installs can still bootstrap with
-          <code> LIFTOFF_ADMIN_PASSWORD</code> or <code>npm run seed:admin</code>.
+          No password is stored anywhere but the database (hashed). Automated installs
+          can bootstrap with <code>npm run seed:admin</code>.
         </p>
       </form>
     </div>

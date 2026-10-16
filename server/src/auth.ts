@@ -43,7 +43,8 @@ function printGeneratedPassword(password: string): void {
  * Prepares auth state on boot:
  *  - a JWT signing secret (random, persisted)
  *  - the owner account, created once from (in order) a pre-existing password
- *    hash, LIFTOFF_ADMIN_PASSWORD, or a newly generated password.
+ *    hash. Otherwise the first-run wizard (or `npm run seed:admin`) handles
+ *    it.
  *
  * Upgrades from the single-password version keep working: the old hash is
  * moved onto the owner account, so nobody is locked out.
@@ -83,30 +84,16 @@ export function initAuth(): void {
   if (store.countUsers() > 0) return;
 
   const legacyHash = getSetting(LEGACY_HASH_KEY);
-  const environmentPassword = process.env.LIFTOFF_ADMIN_PASSWORD;
 
-  // Bootstrap non-interactively only when explicitly asked to: a legacy hash
-  // (from the pre-users version) or an explicit LIFTOFF_ADMIN_PASSWORD. This
-  // keeps a plaintext password out of the default setup flow — fresh installs
-  // are provisioned through the first-run wizard in the UI (or `npm run
-  // seed:admin`), so nothing secret has to live in .env or the README.
-  if (legacyHash || environmentPassword) {
-    let passwordHash: string;
-    let generated = false;
-
-    if (legacyHash) {
-      passwordHash = legacyHash;
-      generated = getSetting(GENERATED_FLAG) === '1';
-    } else {
-      passwordHash = hashPassword(environmentPassword as string);
-    }
-
-    const username =
-      (process.env.LIFTOFF_ADMIN_USERNAME ?? 'admin').trim() || 'admin';
+  // Migrate pre-users installs (legacy `admin_password_hash` setting) so existing
+  // operators are not locked out by the v1→v2 upgrade.
+  if (legacyHash) {
+    const passwordHash = legacyHash;
+    const generated = getSetting(GENERATED_FLAG) === '1';
 
     store.insertUser({
       id: randomId('user'),
-      username,
+      username: 'admin',
       password_hash: passwordHash,
       email: null,
       role: 'admin',
@@ -119,17 +106,12 @@ export function initAuth(): void {
     });
     setSetting(GENERATED_FLAG, generated ? '1' : '0');
 
-    console.log(
-      `[liftoff] Owner account "${username}" created${
-        legacyHash ? ' (migrated existing admin password)' : ''
-      }.`,
-    );
+    console.log('[liftoff] Owner account "admin" migrated (legacy admin password).');
     return;
   }
 
   console.log('[liftoff] No owner account exists yet.');
-  console.log('[liftoff] Open the UI to complete first-run setup, or set LIFTOFF_ADMIN_PASSWORD to bootstrap non-interactively.');
-  console.log('[liftoff] (CLI: `npm run seed:admin`.)');
+  console.log('[liftoff] Open the UI to complete first-run setup, or run `npm run seed:admin`.');
 }
 
 function jwtSecret(): string {

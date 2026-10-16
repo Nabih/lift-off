@@ -495,13 +495,13 @@ Data dir (gitignored): `liftoff.db`, `secret.key`, `keys/`, `workspaces/`.
 
 ### Round 12 — first-run account setup (no plaintext password in `.env`)
 
-Fresh installs used to seed an owner from `LIFTOFF_ADMIN_PASSWORD` (plaintext in
-`.env`) or a generated password printed to the logs. That leaks a secret.
+Fresh installs used to seed an owner from a generated password printed to the logs or from a secret left in
+`.env`. That leaks a secret.
 
 | Question | Decision |
 | --- | --- |
 | Default first-run | A web **first-run setup** page, shown only while no account exists |
-| Headless/CI installs | Keep `LIFTOFF_ADMIN_PASSWORD` as an explicit opt-in escape hatch |
+| Headless/CI installs | `npm run seed:admin` (no plaintext secret in `.env`) |
 | Scripted/interactive | `npm run seed:admin` — prompts for the same fields, refuses if a user exists |
 | Security | `POST /api/auth/bootstrap` returns `410 Gone` once any account exists; rate-limited by IP |
 
@@ -625,7 +625,7 @@ path):
 
 **Migrations** (11 checks, all passing):
 - pre-users DB with only a legacy `admin_password_hash`, booted with no
-  `LIFTOFF_ADMIN_PASSWORD` → owner created from the old hash, signed in with the
+  legacy hash → owner created from the old hash, signed in with the
   old password, flagged `isOwner`, not flagged as generated
 - old-schema DB (new columns/tables dropped, incl. a pre-existing site with env
   vars and a pre-existing deployer user) → booted clean, columns re-added, data

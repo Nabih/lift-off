@@ -53,17 +53,15 @@ npm run dev
 - UI: <http://localhost:5173> (Vite dev server, proxies `/api` to the backend)
 - API: <http://localhost:4000>
 
-On first boot, if no owner account exists yet, Lift-Off does **not** create one
-with a plaintext password in a config file. Instead it serves a **first-run setup**
-screen: open the UI, create the owner account (username, password, optional email),
-and you are signed in immediately. No secret ever has to live in `.env`.
+On first boot, if no owner account exists yet, Lift-Off serves a **first-run
+setup** screen: open the UI, create the owner account (username, password,
+optional email), and you are signed in immediately. No secret ever has to live in
+`.env`.
 
 For headless or automated installs you can still bootstrap non-interactively:
+run `npm run seed:admin`, which prompts for the same fields and only works on a
+fresh install (it refuses if any account already exists).
 
-- Set `LIFTOFF_ADMIN_PASSWORD` (and optionally `LIFTOFF_ADMIN_USERNAME`) before
-  starting — the server creates the owner on boot and skips the wizard.
-- Or run `npm run seed:admin`, which prompts for the same fields and only works
-  on a fresh install (it refuses if any account already exists).
 
 ---
 
@@ -76,9 +74,8 @@ npm run build            # builds web/dist and server/dist
 
 # 2. Configure
 cp .env.example .env     # then edit: set LIFTOFF_SECRET_KEY (optional).
-                         # No admin password needed — the first-run wizard creates
-                         # the owner. For headless boxes: set LIFTOFF_ADMIN_PASSWORD
-                         # instead, or run `npm run seed:admin`.
+                         # The first-run wizard creates the owner on first visit;
+                         # or run `npm run seed:admin` for headless boxes.
 
 # 3. Run under pm2
 sudo npm install -g pm2
@@ -389,9 +386,7 @@ password for any account from **Users → Edit → New password**.
 | `PORT` | `4000` | HTTP port. |
 | `LIFTOFF_DATA_DIR` | `./data` | Database, deploy keys, cloned repos. |
 | `LIFTOFF_SECRET_KEY` | generated file | 32 bytes (64 hex chars or base64) for encrypting secrets at rest. |
-| `LIFTOFF_ADMIN_PASSWORD` | (none) | Optional. When set, creates the owner account on first boot instead of using the first-run wizard. |
-| `LIFTOFF_ADMIN_USERNAME` | `admin` | Username used together with `LIFTOFF_ADMIN_PASSWORD`. |
-| `npm run seed:admin` | n/a | Interactive CLI that creates the owner account on a fresh install; refuses if one exists. |
+| `npm run seed:admin` | n/a | Interactive CLI that creates the owner account on a fresh install; refuses if one exists. Prompts without echoing the password. |
 | `LIFTOFF_COOKIE_SECURE` | `false` | Set `true` when serving over HTTPS. |
 | `LIFTOFF_MAX_CONCURRENT_BUILDS` | `1` | Parallel builds. |
 | `LIFTOFF_WEB_DIST` | `./web/dist` | Location of the built UI. |

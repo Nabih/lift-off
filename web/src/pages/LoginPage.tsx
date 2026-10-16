@@ -74,8 +74,8 @@ export default function LoginPage() {
         </p>
 
         <p className="muted small">
-          The first account is created on boot and printed in the server console,
-          or configured with <code>LIFTOFF_ADMIN_PASSWORD</code>.
+          The first account is created on first visit through the setup screen, or
+          with <code>npm run seed:admin</code>.
         </p>
       </form>
     </div>
