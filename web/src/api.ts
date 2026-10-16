@@ -170,6 +170,11 @@ export const api = {
     request<{ deploymentId: string }>(`/api/sites/${id}/rollback`, {
       method: 'POST',
     }),
+  rollbackToRelease: (id: string, releaseName: string) =>
+    request<{ deploymentId: string }>(`/api/sites/${id}/rollback-to`, {
+      method: 'POST',
+      body: { releaseName },
+    }),
   listReleases: (id: string) =>
     request<{ releases: Release[] }>(`/api/sites/${id}/releases`),
 

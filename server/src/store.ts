@@ -262,6 +262,18 @@ export function releaseRedeployFlags(siteId: string): Map<string, boolean> {
   return new Map(rows.map((row) => [row.release_name, Boolean(row.redeploy)]));
 }
 
+/** Maps release name → username that deployed it (the triggered_by of the producing deployment). */
+export function releaseDeployers(siteId: string): Map<string, string | null> {
+  const rows = db
+    .prepare(
+      `SELECT release_name, triggered_by FROM deployments
+       WHERE site_id = ? AND release_name IS NOT NULL
+       GROUP BY release_name`,
+    )
+    .all(siteId) as unknown as Array<{ release_name: string; triggered_by: string | null }>;
+  return new Map(rows.map((row) => [row.release_name, row.triggered_by]));
+}
+
 /* -------------------------------------------------------------------------- */
 /* Users                                                                       */
 /* -------------------------------------------------------------------------- */

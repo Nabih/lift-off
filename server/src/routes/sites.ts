@@ -658,6 +658,30 @@ sitesRouter.post('/:id/rollback', (req, res) => {
   res.status(202).json({ deploymentId });
 });
 
+sitesRouter.post('/:id/rollback-to', (req, res) => {
+  const site = loadSiteForRequest(req, res);
+  if (!site) return;
+  if (site.deploy_strategy !== 'releases') {
+    res.status(409).json({
+      error: 'Rollback requires the "releases" deploy strategy.',
+    });
+    return;
+  }
+  const body = (req.body ?? {}) as { releaseName?: unknown };
+  const releaseName =
+    typeof body.releaseName === 'string' && body.releaseName.trim()
+      ? body.releaseName.trim()
+      : '';
+  if (!releaseName) {
+    res.status(400).json({ error: 'A release name is required.' });
+    return;
+  }
+  const deploymentId = enqueueRollback(site.id, requireUser(req).username, {
+    releaseName,
+  });
+  res.status(202).json({ deploymentId });
+});
+
 sitesRouter.get('/:id/releases', async (req, res, next) => {
   try {
     const site = loadSiteForRequest(req, res);
@@ -668,10 +692,12 @@ sitesRouter.get('/:id/releases', async (req, res, next) => {
     }
     const releases = await listReleases(site.target_dir);
     const flags = store.releaseRedeployFlags(site.id);
+    const deployers = store.releaseDeployers(site.id);
     res.json({
       releases: releases.map((release) => ({
         ...release,
         redeploy: flags.get(release.name) ?? false,
+        deployedBy: deployers.get(release.name) ?? null,
       })),
     });
   } catch (error) {

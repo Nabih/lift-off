@@ -1,6 +1,12 @@
 import { MAX_CONCURRENT_BUILDS, repoDirFor } from './config.js';
 import { randomId } from './crypto.js';
-import { deployArtifact, releaseNameSha, resolveDistDir, rollbackRelease } from './deploy.js';
+import {
+  deployArtifact,
+  releaseNameSha,
+  resolveDistDir,
+  rollbackRelease,
+  switchRelease,
+} from './deploy.js';
 import { syncRepo } from './git.js';
 import { createBuildLogger, type BuildLogger } from './log.js';
 import { logBus } from './logbus.js';
@@ -29,6 +35,11 @@ export interface EnqueueOptions {
   commit?: string | null;
   /** Mark the deployment as a forced re-deploy of what was already live. */
   redeploy?: boolean;
+  /**
+   * For rollbacks: repoint `current` at this specific release instead of the
+   * one immediately before it. Omit for a one-step rollback.
+   */
+  releaseName?: string | null;
 }
 
 function enqueue(
@@ -52,7 +63,7 @@ function enqueue(
     commit_sha: options.commit ?? null,
     commit_message: null,
     redeploy: options.redeploy ? 1 : 0,
-    release_name: null,
+    release_name: options.releaseName ?? null,
     triggered_by: triggeredBy,
     error: null,
     queued_at: new Date().toISOString(),
@@ -77,9 +88,15 @@ export function enqueueDeployment(
   return enqueue(siteId, triggeredBy, 'deploy', options);
 }
 
-/** Queues a rollback of the `current` symlink to the previous release. */
-export function enqueueRollback(siteId: string, triggeredBy: string): string {
-  return enqueue(siteId, triggeredBy, 'rollback');
+/** Queues a rollback of the `current` symlink to the previous (or a specific) release. */
+export function enqueueRollback(
+  siteId: string,
+  triggeredBy: string,
+  options: { releaseName?: string | null } = {},
+): string {
+  return enqueue(siteId, triggeredBy, 'rollback', {
+    releaseName: options.releaseName ?? null,
+  });
 }
 
 function pump(): void {
@@ -169,7 +186,7 @@ async function runDeployment(deploymentId: string): Promise<void> {
     }
 
     if (deployment.kind === 'rollback') {
-      await performRollback(site, deploymentId, log);
+      await performRollback(site, deploymentId, log, deployment.release_name);
     } else {
       // The branch and (optional) commit were chosen when the deploy was queued;
       // they can differ from the site's configured branch.
@@ -255,11 +272,11 @@ async function performDeploy(
   );
 }
 
-/** Repoints `current` at the release before the active one. */
 async function performRollback(
   site: SiteRow,
   deploymentId: string,
   log: BuildLogger,
+  targetRelease?: string | null,
 ): Promise<void> {
   if (site.deploy_strategy !== 'releases') {
     throw new Error(
@@ -267,13 +284,16 @@ async function performRollback(
     );
   }
   log.info(`Rolling back "${site.name}"`);
-  const result = await rollbackRelease(site.target_dir, log);
+  let releaseName: string;
+  if (targetRelease) {
+    const result = await switchRelease(site.target_dir, targetRelease, log);
+    releaseName = result.releaseName;
+  } else {
+    const result = await rollbackRelease(site.target_dir, log);
+    releaseName = result.releaseName;
+  }
 
-  // Record the commit that is now serving, so the deploy check compares against
-  // the release we rolled back to and not the one we rolled back from. The
-  // release name only carries a short sha, so the full commit is recovered from
-  // the deployment that produced it when possible.
-  const sha7 = releaseNameSha(result.releaseName);
+  const sha7 = releaseNameSha(releaseName);
   const origin = sha7 ? findDeploymentByShaPrefix(site.id, sha7) : null;
   updateDeployment(deploymentId, {
     commit_sha: origin?.commit_sha ?? sha7,
@@ -281,7 +301,7 @@ async function performRollback(
     branch: origin?.branch ?? site.branch,
   });
 
-  log.success(`Rolled back: current -> ${result.releaseDir}`);
+  log.success(`Rolled back: current -> releases/${releaseName}`);
 }
 
 export { logBus };

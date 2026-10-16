@@ -259,6 +259,22 @@ export function releaseNameSha(releaseName: string): string | null {
   return /^[0-9a-f]{7,40}$/i.test(sha) ? sha : null;
 }
 
+export async function switchRelease(
+  targetDir: string,
+  releaseName: string,
+  log: BuildLogger,
+): Promise<{ releaseName: string }> {
+  const resolved = validateTargetDir(targetDir);
+  const releasesDir = path.join(resolved, 'releases');
+  const releases = await sortedReleases(releasesDir);
+  if (!releases.includes(releaseName)) {
+    throw new Error(`Release "${releaseName}" was not found on this site.`);
+  }
+  log.info(`Switching current -> releases/${releaseName}`);
+  await swapCurrentSymlink(resolved, releaseName);
+  return { releaseName };
+}
+
 export interface RollbackResult {
   releaseDir: string;
   releaseName: string;

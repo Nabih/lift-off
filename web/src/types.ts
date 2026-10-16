@@ -146,6 +146,8 @@ export interface Release {
   isCurrent: boolean;
   /** True when the deploy that produced this release was a forced re-deployment. */
   redeploy?: boolean;
+  /** Username of the deployer who produced this release. */
+  deployedBy?: string | null;
 }
 
 export interface PackageJsonScript {

@@ -261,6 +261,27 @@ export default function SiteDetailPage() {
                 >
                   <span className="mono">{release.name}</span>
                   {release.isCurrent && <span className="badge success">live</span>}
+                  {release.deployedBy && (
+                    <span className="muted small"> by {release.deployedBy}</span>
+                  )}
+                  {!release.isCurrent && (
+                    <button
+                      type="button"
+                      className="btn ghost small"
+                      disabled={busy !== null}
+                      onClick={() =>
+                        void run('rollback', async () => {
+                          const { deploymentId } = await api.rollbackToRelease(
+                            site.id,
+                            release.name,
+                          );
+                          navigate(`/deployments/${deploymentId}`);
+                        })
+                      }
+                    >
+                      Roll back to this
+                    </button>
+                  )}
                   {release.redeploy && (
                     <span className="redeploy-ref" title="A forced re-deploy of what was already live">
                       <span aria-hidden="true">↻</span>
