@@ -146,9 +146,11 @@ function loadSiteForRequest(req: Request, res: Response): SiteRow | null {
 
 sitesRouter.get('/', (req, res) => {
   const user = requireUser(req);
+  const includeDeleted =
+    isAdmin(user) && String(req.query.deleted ?? '') === '1';
   res.json({
     sites: store
-      .listSitesForUser(user.id, isAdmin(user))
+      .listSitesForUser(user.id, isAdmin(user), includeDeleted)
       .map((row) => siteForUser(row, user)),
   });
 });
@@ -226,6 +228,7 @@ sitesRouter.post('/', async (req, res, next) => {
       env_vars: JSON.stringify(data.envVars),
       enabled: data.enabled ? 1 : 0,
       draft: data.draft ? 1 : 0,
+      deleted_at: null,
       created_at: now,
       updated_at: now,
     };
@@ -337,12 +340,42 @@ sitesRouter.delete('/:id', async (req, res, next) => {
       res.status(404).json({ error: 'Site not found.' });
       return;
     }
-    store.deleteSite(site.id);
-    await Promise.allSettled([
-      fsp.rm(path.join(WORKSPACES_DIR, site.id), { recursive: true, force: true }),
-      fsp.rm(keyPathFor(site.id), { force: true }),
-    ]);
+    if (site.deleted_at) {
+      res.status(409).json({ error: 'This site is already deleted.' });
+      return;
+    }
+    // Soft delete: keep the row (and its workspace) so an admin can restore it.
+    store.updateSite(site.id, {
+      deleted_at: new Date().toISOString(),
+      enabled: 0,
+    });
     res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+sitesRouter.post('/:id/restore', async (req, res, next) => {
+  try {
+    if (!isAdmin(requireUser(req))) {
+      denyNonAdmin(res);
+      return;
+    }
+
+    const site = store.getSite(req.params.id);
+    if (!site) {
+      res.status(404).json({ error: 'Site not found.' });
+      return;
+    }
+    if (!site.deleted_at) {
+      res.status(409).json({ error: 'This site is not deleted.' });
+      return;
+    }
+    store.updateSite(site.id, {
+      deleted_at: null,
+      enabled: 1,
+    });
+    res.json(siteForUser(store.getSite(site.id)!, requireUser(req)));
   } catch (error) {
     next(error);
   }
@@ -638,7 +671,11 @@ sitesRouter.post('/:id/deploy', async (req, res, next) => {
       return;
     }
     if (site.draft) {
-      res.status(409).json({ error: 'This site is a draft — finish and save its details before deploying.' });
+      res.status(409).json({ error: 'This site is a draft \u2014 finish and save its details before deploying.' });
+      return;
+    }
+    if (site.deleted_at) {
+      res.status(404).json({ error: 'This site is deleted.' });
       return;
     }
 

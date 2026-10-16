@@ -56,6 +56,7 @@ export interface Site {
   envVars: Record<string, string>;
   enabled: boolean;
   draft: boolean;
+  deleted: boolean;
   createdAt: string;
   updatedAt: string;
 }

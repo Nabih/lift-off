@@ -123,7 +123,12 @@ export const api = {
     request<{ ok: boolean }>(`/api/users/${id}`, { method: 'DELETE' }),
 
   // ---- sites ------------------------------------------------------------
-  listSites: () => request<{ sites: Site[] }>('/api/sites'),
+  listSites: (options?: { deleted?: boolean }) =>
+    request<{ sites: Site[] }>(
+      `/api/sites${options?.deleted ? '?deleted=1' : ''}`,
+    ),
+  restoreSite: (id: string) =>
+    request<Site>(`/api/sites/${id}/restore`, { method: 'POST' }),
   getSite: (id: string) => request<Site>(`/api/sites/${id}`),
   createSite: (input: SiteInput) =>
     request<Site>('/api/sites', { method: 'POST', body: input }),

@@ -96,6 +96,7 @@ export default function SiteDetailPage() {
           <h1>{site.name}</h1>
           {!site.enabled && <span className="badge muted">disabled</span>}
           {site.draft && <span className="badge draft">draft</span>}
+          {site.deleted && <span className="badge failed">deleted</span>}
         </div>
         <div className="header-actions">
           {isAdmin && (

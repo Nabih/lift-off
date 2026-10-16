@@ -5,20 +5,26 @@ import type { DeploymentRow, LogLine, SiteRow, UserRow } from './types.js';
 /* Sites                                                                       */
 /* -------------------------------------------------------------------------- */
 
-export function listSites(): SiteRow[] {
+export function listSites(includeDeleted = false): SiteRow[] {
+  const where = includeDeleted ? '' : 'WHERE deleted_at IS NULL';
   return db
-    .prepare('SELECT * FROM sites ORDER BY name COLLATE NOCASE')
+    .prepare(`SELECT * FROM sites ${where} ORDER BY name COLLATE NOCASE`)
     .all() as unknown as SiteRow[];
 }
 
 /** Admins see every site; Deployers see only the sites assigned to them. */
-export function listSitesForUser(userId: string, isAdmin: boolean): SiteRow[] {
-  if (isAdmin) return listSites();
+export function listSitesForUser(
+  userId: string,
+  isAdmin: boolean,
+  includeDeleted = false,
+): SiteRow[] {
+  if (isAdmin) return listSites(includeDeleted);
+  const clause = includeDeleted ? '' : 'AND s.deleted_at IS NULL';
   return db
     .prepare(
       `SELECT s.* FROM sites s
        JOIN user_sites us ON us.site_id = s.id
-       WHERE us.user_id = ?
+       WHERE us.user_id = ? ${clause}
        ORDER BY s.name COLLATE NOCASE`,
     )
     .all(userId) as unknown as SiteRow[];

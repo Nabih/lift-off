@@ -15,6 +15,7 @@ export default function SitesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deployTarget, setDeployTarget] = useState<Site | null>(null);
+  const [deletedSites, setDeletedSites] = useState<Site[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,6 +29,15 @@ export default function SitesPage() {
         if (cancelled) return;
 
         setSites(siteResult.sites);
+
+        if (isAdmin && !cancelled) {
+          try {
+            const del = await api.listSites({ deleted: true });
+            if (!cancelled) setDeletedSites(del.sites);
+          } catch {
+            // Non-fatal; listing still works.
+          }
+        }
         const bySite: Record<string, Deployment> = {};
         for (const deployment of deploymentResult.deployments) {
           if (!bySite[deployment.siteId]) bySite[deployment.siteId] = deployment;
@@ -47,6 +57,13 @@ export default function SitesPage() {
       cancelled = true;
     };
   }, []);
+
+  async function restore(site: Site) {
+    if (!window.confirm(`Restore "${site.name}"?`)) return;
+    await api.restoreSite(site.id);
+    setSites((prev) => [...prev, site].sort((a, b) => a.name.localeCompare(b.name)));
+    setDeletedSites((prev) => prev.filter((s) => s.id !== site.id));
+  }
 
   return (
     <div className="page">
@@ -140,6 +157,42 @@ export default function SitesPage() {
             );
           })}
         </div>
+      )}
+
+      {isAdmin && deletedSites.length > 0 && (
+        <section className="card">
+          <h2>Recently deleted sites</h2>
+          <p className="muted small">
+            Only administrators see these. Deleted sites keep their workspace, so
+            restoring brings a site back exactly as it was.
+          </p>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Branch</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {deletedSites.map((site) => (
+                <tr key={site.id}>
+                  <td className="site-name">{site.name}</td>
+                  <td className="mono small">{site.branch}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="btn primary small"
+                      onClick={() => void restore(site)}
+                    >
+                      Restore
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
       )}
 
       {deployTarget && (
