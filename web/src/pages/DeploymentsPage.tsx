@@ -64,16 +64,24 @@ export default function DeploymentsPage() {
     [searchParams, setSearchParams],
   );
 
-  // Push the debounced search into the URL. Writing it here (rather than on each
-  // keystroke) is what throttles the API calls.
+  // The debounced value is the ONLY writer of ?search=. Using the functional
+  // updater means this effect does not depend on the searchParams object, which
+  // is a new instance on every render.
   useEffect(() => {
-    if (debouncedSearch === search) return;
-    const next = new URLSearchParams(searchParams);
-    if (debouncedSearch) next.set('search', debouncedSearch);
-    else next.delete('search');
-    next.delete('page');
-    setSearchParams(next, { replace: true });
-  }, [debouncedSearch, search, searchParams, setSearchParams]);
+    setSearchParams(
+      (previous) => {
+        // Nothing to do when the search already matches — this is the case on
+        // mount, so a ?page= from a shared link is not thrown away.
+        if ((previous.get('search') ?? '') === debouncedSearch) return previous;
+        const next = new URLSearchParams(previous);
+        if (debouncedSearch) next.set('search', debouncedSearch);
+        else next.delete('search');
+        next.delete('page'); // a new search always starts from the first page
+        return next;
+      },
+      { replace: true },
+    );
+  }, [debouncedSearch, setSearchParams]);
 
   const load = useCallback(async () => {
     try {
@@ -106,9 +114,18 @@ export default function DeploymentsPage() {
     return () => window.clearInterval(timer);
   }, [load]);
 
-  // If the URL search changes from elsewhere (e.g. back button), mirror it.
+  // Adopt a search that arrived from somewhere else (a shared link, the back
+  // button). `pushedSearch` is the last value we wrote, so our own writes do not
+  // bounce back and reset what the user is typing.
+  const pushedSearch = useRef(search);
   useEffect(() => {
-    setSearchInput((current) => (current === search ? current : search));
+    pushedSearch.current = debouncedSearch;
+  }, [debouncedSearch]);
+
+  useEffect(() => {
+    if (search === pushedSearch.current) return;
+    pushedSearch.current = search;
+    setSearchInput(search);
   }, [search]);
 
   const from = total === 0 ? 0 : (page - 1) * PER_PAGE + 1;
