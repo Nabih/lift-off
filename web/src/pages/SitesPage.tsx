@@ -64,14 +64,14 @@ export default function SitesPage() {
           </p>
         </div>
         {isAdmin && (
-          <>
+          <div className="header-actions">
             <Link className="btn ghost" to="/sites/archived">
               Archived sites
             </Link>
             <Link className="btn primary" to="/sites/new">
               New site
             </Link>
-          </>
+          </div>
         )}
       </header>
 
