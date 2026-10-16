@@ -335,15 +335,6 @@ export default function SiteDetailPage() {
                       {deployment.kind === 'rollback' && (
                         <span className="badge muted">rollback</span>
                       )}
-                      {deployment.redeploy && (
-                        <span
-                          className="redeploy-ref"
-                          title="A forced re-deploy of what was already live"
-                        >
-                          <span aria-hidden="true">↻</span>
-                          <span>re-deploy</span>
-                        </span>
-                      )}
                     </td>
                     <td className="small">
                       <CommitRef deployment={deployment} />
