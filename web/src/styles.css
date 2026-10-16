@@ -1008,3 +1008,59 @@ a.branch-ref:hover {
   box-shadow: 0 0 0 3px rgba(240, 97, 109, 0.16);
 }
 
+
+/* ------------------------------------------------------------------ toggles */
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.toggle-track {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  background: #1a2330;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 2px;
+  box-sizing: border-box;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.toggle-thumb {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.toggle input:checked + .toggle-track {
+  background: rgba(255, 183, 62, 0.2);
+  border-color: #ffb73e;
+}
+
+.toggle input:checked + .toggle-track .toggle-thumb {
+  transform: translateX(16px);
+  background: #ffb73e;
+}
+
+.toggle-label {
+  font-size: 13px;
+  color: var(--text);
+  letter-spacing: 0.1px;
+}

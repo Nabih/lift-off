@@ -289,9 +289,23 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
               : `Editing ${form.name}`}
           </p>
         </div>
-        <Link className="btn ghost" to={id ? `/sites/${id}` : '/'}>
-          Cancel
-        </Link>
+        <div className="header-actions">
+          <label className="toggle" title="Drafts need only a name; finish details later">
+            <input
+              type="checkbox"
+              className="toggle-input"
+              checked={Boolean(form.draft)}
+              onChange={(event) => set('draft', event.target.checked)}
+            />
+            <span className="toggle-track">
+              <span className="toggle-thumb" />
+            </span>
+            <span className="toggle-label">Draft</span>
+          </label>
+          <Link className="btn ghost" to={id ? `/sites/${id}` : '/'}>
+            Cancel
+          </Link>
+        </div>
       </header>
 
       {error && <div className="alert error">{error}</div>}
