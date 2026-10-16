@@ -180,7 +180,15 @@ export default function SiteDetailPage() {
         </section>
 
         <section className="card">
-          <h2>Authentication</h2>
+          <h2>
+            Authentication
+            {site.authType === 'none' && (
+              <span className="muted small"> — no credentials, public repo over HTTPS</span>
+            )}
+            {site.authType === 'token' && (
+              <span className="muted small"> — personal access token stored</span>
+            )}
+          </h2>
           {site.authType === 'ssh' && site.sshPublicKey ? (
             <>
               <p className="muted small">
@@ -220,12 +228,15 @@ export default function SiteDetailPage() {
                 )}
               </div>
             </>
+          ) : site.authType === 'token' ? (
+            <p className="muted small">
+              A personal access token is stored for this site. Edit the site to
+              replace it.
+            </p>
           ) : null}
-        </section>
 
-        <section className="card">
-          <div className="row">
-            <h2>Connectivity</h2>
+          <div className="row" style={{ marginTop: site.authType === 'ssh' ? 12 : 0 }}>
+            <h3>Connectivity</h3>
             <span className="spacer" />
             <button
               className="btn small"
@@ -244,13 +255,13 @@ export default function SiteDetailPage() {
             <div className={`alert ${test.ok ? 'success' : 'error'}`}>{test.message}</div>
           ) : (
             <p className="muted small">
-              Verifies the deploy key can read the repository and that the branch
+              Verifies the credentials can read the repository and that the branch
               exists.
             </p>
           )}
         </section>
 
-        {site.deployStrategy === 'releases' && releases.length > 0 && (
+{site.deployStrategy === 'releases' && releases.length > 0 && (
           <section className="card">
             <h2>Releases</h2>
             <ul className="release-list">
