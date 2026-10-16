@@ -480,11 +480,18 @@ textarea.input {
   margin-bottom: 0;
 }
 
-.validate-row {
+/* A labeled control with a button beside it, e.g. Authentication + Validate. */
+.field-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.field-row .input {
+  flex: 1 1 200px;
+  width: auto;
+  min-width: 150px;
 }
 
 .command-list {

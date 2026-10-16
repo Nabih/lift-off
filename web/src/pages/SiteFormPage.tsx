@@ -225,60 +225,16 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
           <section className="card">
             <h2>Repository</h2>
 
-            <div className="grid-2">
-              <label className="field">
-                <span>Site name</span>
-                <input
-                  className="input"
-                  value={form.name}
-                  required
-                  placeholder="Marketing site"
-                  onChange={(event) => set('name', event.target.value)}
-                />
-              </label>
-
-              <label className="field">
-                <span>Branch</span>
-                {repoBranches.length > 0 ? (
-                  <>
-                    <select
-                      className="input mono"
-                      value={form.branch}
-                      required
-                      onChange={(event) => set('branch', event.target.value)}
-                    >
-                      {!repoBranches.includes(form.branch) && (
-                        <option value={form.branch}>
-                          {form.branch || 'Select a branch…'}
-                        </option>
-                      )}
-                      {repoBranches.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                    <small className="hint">
-                      {repoBranches.length} branch
-                      {repoBranches.length === 1 ? '' : 'es'} found on the remote.
-                    </small>
-                  </>
-                ) : (
-                  <>
-                    <input
-                      className="input mono"
-                      value={form.branch}
-                      required
-                      placeholder="master"
-                      onChange={(event) => set('branch', event.target.value)}
-                    />
-                    <small className="hint">
-                      Validate the connection to load this repository's branches.
-                    </small>
-                  </>
-                )}
-              </label>
-            </div>
+            <label className="field">
+              <span>Site name</span>
+              <input
+                className="input"
+                value={form.name}
+                required
+                placeholder="Marketing site"
+                onChange={(event) => set('name', event.target.value)}
+              />
+            </label>
 
             <label className="field">
               <span>Repository URL</span>
@@ -302,17 +258,44 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
               </small>
             </label>
 
-            <label className="field">
+            <div className="field">
               <span>Authentication</span>
-              <select
-                className="input"
-                value={form.authType}
-                onChange={(event) => set('authType', event.target.value as AuthType)}
-              >
-                <option value="ssh">SSH deploy key</option>
-                <option value="token">Personal access token (HTTPS)</option>
-                <option value="none">None (public repository over HTTPS)</option>
-              </select>
+              <div className="field-row">
+                <select
+                  className="input"
+                  value={form.authType}
+                  onChange={(event) => set('authType', event.target.value as AuthType)}
+                >
+                  <option value="ssh">SSH deploy key</option>
+                  <option value="token">Personal access token (HTTPS)</option>
+                  <option value="none">None (public repository over HTTPS)</option>
+                </select>
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={validating || !canValidate}
+                  onClick={() => void validateConnection()}
+                >
+                  {validating ? 'Validating…' : 'Validate connection'}
+                </button>
+                {validation && (
+                  <span
+                    className={`badge ${
+                      validation.ok
+                        ? validation.branchFound
+                          ? 'badge-success'
+                          : 'badge-queued'
+                        : 'badge-failed'
+                    }`}
+                  >
+                    {validation.ok
+                      ? validation.branchFound
+                        ? 'Reachable'
+                        : 'Branch missing'
+                      : 'Unreachable'}
+                  </span>
+                )}
+              </div>
               <small className="hint">
                 {form.authType === 'ssh'
                   ? 'A dedicated keypair is generated per site. Add its public key to GitHub as a deploy key.'
@@ -320,7 +303,16 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
                     ? 'A fine-grained or classic token with read access to the repository. Stored encrypted.'
                     : 'Only works for public repositories.'}
               </small>
-            </label>
+              <small className="hint">
+                {!canValidate
+                  ? form.authType === 'ssh'
+                    ? 'Save the site first to generate its deploy key, then validate.'
+                    : form.authType === 'token'
+                      ? 'Enter an access token, then validate.'
+                      : 'Enter a repository URL, then validate.'
+                  : 'Checks the connection and lists the scripts in package.json.'}
+              </small>
+            </div>
 
             {form.authType === 'token' && (
               <label className="field">
@@ -346,42 +338,47 @@ export default function SiteFormPage({ mode }: { mode: 'create' | 'edit' }) {
               </label>
             )}
 
-            <div className="validate-row">
-              <button
-                className="btn"
-                type="button"
-                disabled={validating || !canValidate}
-                onClick={() => void validateConnection()}
-              >
-                {validating ? 'Validating…' : 'Validate connection'}
-              </button>
-              {validation && (
-                <span
-                  className={`badge ${
-                    validation.ok
-                      ? validation.branchFound
-                        ? 'badge-success'
-                        : 'badge-queued'
-                      : 'badge-failed'
-                  }`}
-                >
-                  {validation.ok
-                    ? validation.branchFound
-                      ? 'Reachable'
-                      : 'Branch missing'
-                    : 'Unreachable'}
-                </span>
+            <label className="field">
+              <span>Branch</span>
+              {repoBranches.length > 0 ? (
+                <>
+                  <select
+                    className="input mono"
+                    value={form.branch}
+                    required
+                    onChange={(event) => set('branch', event.target.value)}
+                  >
+                    {!repoBranches.includes(form.branch) && (
+                      <option value={form.branch}>
+                        {form.branch || 'Select a branch…'}
+                      </option>
+                    )}
+                    {repoBranches.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  <small className="hint">
+                    {repoBranches.length} branch
+                    {repoBranches.length === 1 ? '' : 'es'} found on the remote.
+                  </small>
+                </>
+              ) : (
+                <>
+                  <input
+                    className="input mono"
+                    value={form.branch}
+                    required
+                    placeholder="master"
+                    onChange={(event) => set('branch', event.target.value)}
+                  />
+                  <small className="hint">
+                    Validate the connection to load this repository's branches.
+                  </small>
+                </>
               )}
-            </div>
-            <small className="hint">
-              {!canValidate
-                ? form.authType === 'ssh'
-                  ? 'Save the site first to generate its deploy key, then validate.'
-                  : form.authType === 'token'
-                    ? 'Enter an access token, then validate.'
-                    : 'Enter a repository URL, then validate.'
-                : 'Checks the connection and lists the scripts in package.json.'}
-            </small>
+            </label>
           </section>
 
           <section className="card">

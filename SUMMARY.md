@@ -229,6 +229,14 @@ dropdown, and the free-text box remains the fallback.
   branches (e.g. dumb HTTP) naturally yields an empty list and the text box
   stays — no special-casing needed.
 
+**Layout:** **Validate connection** now sits *beside* the **Authentication**
+select (with its Reachable / Branch-missing badge), and **Branch** moved out of
+the top row to directly underneath that block. The button and the field it
+depends on are then read together, which is what the create-form case needs:
+validate is disabled until SSH sites are saved, and that reason is only obvious
+next to the auth control. Repository order is now: name → URL → auth (+validate)
+→ token → branch.
+
 ---
 
 ## 3. How it works
