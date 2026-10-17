@@ -13,6 +13,52 @@ Personal notes on what was built, why, and what's left. Not documentation —
 **Status:** feature-complete for the stated goal, builds and typechecks clean,
 verified end to end. Not yet deployed to the VPS.
 
+## 0. Handoff — read this first
+
+**Repo:** `/Users/nabih/Projects/Lift-Off`, public remote `Nabih/lift-off`, branch
+`main`. All work committed and pushed (latest `694cb3f`). Tree clean.
+
+**Running now (dev):** UI http://localhost:5173, API http://localhost:4000, log
+`/tmp/scratchpad/liftoff-dev.log`. Login `admin` / `deplego-dev-pass`. **Only one
+instance may run** — a duplicate caused `EADDRINUSE`.
+
+**Live data:** users `admin` (owner/admin) and `nabih` (deployer, no email); sites
+`Test` (`site_SGarZtrRwvDH`, EyeSpy, branch `main`, auth `none`) and archived `Test`
+(`site_WAv-V6o0jGOv`). Mail: host `mail.faour.net:465` secure, from
+`lift-off <nabih@faour.net>`, notify `nfaour@gmail.com`, notifyEnabled **on**; **no
+account emails set yet**. SMTP from this machine is **flaky** (~1 in 3 sends fail
+with DNS/connection timeout) — hence the retry; deliverability to Gmail still
+unconfirmed.
+
+**Just finished (round 16):** sites list scales — 6-per-page paging, search
+(name/repo), All/Never deployed/Draft/Disabled filters, sort by Name/Last
+deployment/Date added, and a per-site `latest` payload from
+`latestDeploymentsForSites()` (one `ROW_NUMBER()` query) replacing the 200-record
+deployments fetch that misreported "Never deployed" past ~250 sites. Filters, sort
+and page live in the URL. `useDebounced` extracted to `web/src/useDebounced.ts`
+with an immediate setter (fixes "Clear filters" bouncing `?search=` back).
+
+**Next:** see section 9. The two candidates flagged in round 16 (Sites-page
+search/filter and a per-site latest-deployment endpoint) both landed in that round.
+What remains is the VPS deploy and the optional items.
+
+**Verify before trusting anything:**
+```
+npm run typecheck && npm run build
+node /private/var/folders/04/vvq7778s6bd6wbqmh7td6tbm0000gn/T/opencode/liftoff-deploycheck-test.mjs
+node /private/var/folders/04/vvq7778s6bd6wbqmh7td6tbm0000gn/T/opencode/liftoff-access-test.mjs
+node /private/var/folders/04/vvq7778s6bd6wbqmh7td6tbm0000gn/T/opencode/liftoff-validate-test.mjs
+```
+All three print `ALL CHECKS PASSED`. Dev-server note: always run the full
+`npm run build` (not just one workspace) before testing `server/deploy`.
+
+**Test fixtures that bite:** target dir must not be inside `LIFTOFF_DATA_DIR`;
+fixtures must serve the bare repo over dumb HTTP (`git update-server-info`) for
+`authType: 'none'`; re-deploying the live branch+commit returns `409 ALREADY_LIVE`
+(use `{"force":true}`); `user_sites.user_id` holds an opaque id, not a username;
+boot marks interrupted deployments failed, so compute ground truth *after* the
+server starts.
+
 Rounds so far: (1) core deploy pipeline, (2) users/roles/owner, (3) PAT auth +
 email password reset, (4) form-time repository validation + script discovery,
 (5) renamed to **Lift-Off** and published publicly, (6) site-side access
@@ -20,7 +66,10 @@ assignment + filtered assignment lists, (7) branch dropdown from the validated
 repository, (8) re-deploy detection, forced deploys, and GitHub links,
 (9) moved the re-deployment label next to the branch and onto the Releases card,
 (10) a refresh button beside the branch dropdown, (11) picking the branch and an
-optional commit in the deploy dialog, (12) first-run setup so no secret lives in `.env`.
+optional commit in the deploy dialog, (12) first-run setup so no secret lives in
+`.env`, (13) drafts + archive/restore, (14) paginated/filterable deployments list,
+(15) deploy-finish email notifications, (16) sites list scales (paging, search,
+filters, sort, per-site latest).
 
 ---
 
@@ -828,3 +877,7 @@ The debounce had no way to be told the search was now empty. Fixed by having
 - [ ] Optional: pending-email verification (an admin can currently set an address
       that nobody has confirmed is reachable)
 - [ ] If untrusted repos are ever connected: move builds into containers after all
+- [ ] Sites-list filtering and `last-deploy` sorting happen in JS after fetching
+      every visible site's `latest`. Fine to hundreds of sites; if thousands are
+      expected, push the `never-deployed` / `draft` / `disabled` filters and the
+      last-deploy sort into SQL
